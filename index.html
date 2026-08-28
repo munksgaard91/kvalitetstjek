@@ -36,7 +36,7 @@
   }
 
   header .inner {
-    max-width: 760px;
+    max-width: 950px;
     margin: 0 auto;
     display: flex;
     flex-direction: column;
@@ -73,7 +73,7 @@
   }
 
   main {
-    max-width: 760px;
+    max-width: 950px;
     margin: 0 auto;
     padding: 44px 24px 60px;
   }
@@ -209,23 +209,8 @@
   .verdict-card.unknown .verdict-title { color: var(--warn); }
   .verdict-card.unknown .verdict-sub { color: var(--text); }
 
-  section.group {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    margin-bottom: 12px;
-    overflow: hidden;
-  }
-
-  section.group > .group-title {
-    padding: 12px 16px;
-    font-weight: 700;
-    font-size: 13.5px;
-    border-bottom: 1px solid var(--border);
-  }
-
-  section.group.errors > .group-title { color: var(--error); }
-  section.group.warnings > .group-title { color: var(--warn); }
+  .group.errors > .group-title { color: var(--error); }
+  .group.warnings > .group-title { color: var(--warn); }
 
   .page-block {
     border-bottom: 1px solid var(--border);
@@ -295,6 +280,35 @@
   }
   .item-context a { color: var(--navy); }
 
+  .raw-toggle-wrap {
+    margin-top: 6px;
+  }
+  .raw-toggle-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--navy);
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .raw-toggle-btn:hover { text-decoration: underline; }
+  .raw-code {
+    margin: 8px 0 0;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow-x: auto;
+  }
+
   .error-text { color: var(--error); }
 
   details.collapsible summary {
@@ -315,9 +329,7 @@
     color: var(--text-muted);
   }
   details.collapsible[open] summary::after { content: '–'; }
-  details.collapsible + details.collapsible,
-  section.group + details.collapsible,
-  details.collapsible + section.group {
+  details.collapsible + details.collapsible {
     margin-top: 12px;
   }
   details.collapsible {
@@ -428,11 +440,26 @@ var STOCK_PATTERNS = [
 
 var KNOWN_EXTERNAL_DOMAINS = [
   'facebook.com', 'instagram.com', 'linkedin.com', 'twitter.com', 'x.com',
-  'youtube.com', 'tiktok.com', 'pinterest.com', 'snapchat.com',
+  'youtube.com', 'youtu.be', 'vimeo.com', 'dailymotion.com',
+  'tiktok.com', 'pinterest.com', 'snapchat.com',
   'google.com', 'google.dk', 'maps.google.com', 'goo.gl',
   'trustpilot.com', 'dk.trustpilot.com', 'calendly.com',
   'kinsta.cloud', 'wordpress.org', 'gstatic.com', 'googleapis.com',
 ];
+
+/**
+ * Videoplatforme der ofte bruges som lightbox/embed-afspillere (fx en
+ * video der åbner i en lightbox på siden i stedet for at navigere væk).
+ * Sådan et link SKAL ikke have target="_blank", da det aldrig er meningen
+ * det skal åbne i en ny fane - det er en del af sidens eget UI.
+ */
+var LIGHTBOX_VIDEO_DOMAINS = ['vimeo.com', 'youtube.com', 'youtu.be', 'dailymotion.com'];
+
+function isLightboxVideoDomain(domain) {
+  return LIGHTBOX_VIDEO_DOMAINS.some(function(d) {
+    return domain === d || domain.slice(-(d.length + 1)) === '.' + d;
+  });
+}
 
 /**
  * Fjerner <script>/<style>-indhold og HTML-kommentarer, så
@@ -484,6 +511,20 @@ function extractH1Texts(html) {
   return texts;
 }
 
+/**
+ * Udtrækker værdien af en HTML-attribut, uanset om den er skrevet med
+ * dobbelte anførselstegn, enkelte anførselstegn, eller slet ingen
+ * anførselstegn (fx href=https://... uden citationstegn - lovligt HTML,
+ * men bruges bl.a. af Trustpilots widget-kode). Uden dette ville sådan
+ * et link fejlagtigt blive opfattet som om det manglede en href.
+ */
+function extractAttr(tag, name) {
+  var re = new RegExp(name + '\\s*=\\s*(?:"([^"]*)"|\'([^\']*)\'|([^\\s>]+))', 'i');
+  var m = tag.match(re);
+  if (!m) return null;
+  return m[1] !== undefined ? m[1] : (m[2] !== undefined ? m[2] : m[3]);
+}
+
 function checkDeadLinks(html) {
   var socialKeywords = /facebook|instagram|linkedin|twitter|youtube|tiktok|pinterest|snapchat/i;
 
@@ -501,12 +542,12 @@ function checkDeadLinks(html) {
   while ((match = regex.exec(cleaned)) !== null) {
     var link = match[0];
     var openTag = link.match(/<a\b[^>]*>/i)[0];
-    var hrefMatch = openTag.match(/href\s*=\s*["']([^"']*)["']/i);
+    var href = extractAttr(openTag, 'href');
     var isDead = false;
-    if (!hrefMatch) {
+    if (href === null) {
       isDead = true;
     } else {
-      var href = hrefMatch[1].trim();
+      href = href.trim();
       if (href === '' || /^#!?$/.test(href) || /^javascript:\s*(void\(0\))?;?\s*$/i.test(href)) {
         isDead = true;
       }
@@ -517,7 +558,8 @@ function checkDeadLinks(html) {
       var linkText = link.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       items.push({
         text: linkText || '(ingen synlig tekst - fx et ikon)',
-        context: getContextSnippet(cleaned, match.index, 45)
+        context: getContextSnippet(cleaned, match.index, 45),
+        raw: link
       });
     }
   }
@@ -534,9 +576,9 @@ function extractFrequentDomains(html, ownHostname, excludeDomains) {
   var counts = {};
 
   anchorTags.forEach(function(tag) {
-    var hrefMatch = tag.match(/href\s*=\s*["'](https?:\/\/[^"']+|\/\/[^"']+)["']/i);
-    if (!hrefMatch) return;
-    var domainMatch = hrefMatch[1].match(/^(?:https?:)?\/\/([^\/]+)/i);
+    var href = extractAttr(tag, 'href');
+    if (!href || !/^(https?:)?\/\//i.test(href)) return;
+    var domainMatch = href.match(/^(?:https?:)?\/\/([^\/]+)/i);
     if (!domainMatch) return;
     var domain = domainMatch[1].replace(/^www\./i, '').toLowerCase();
     if (excludeSet[domain]) return;
@@ -560,17 +602,18 @@ function checkExternalLinksMissingBlank(html, ownDomains) {
 
   anchorTags.forEach(function(anchor) {
     var openTag = anchor.match(/<a\b[^>]*>/i)[0];
-    var hrefMatch = openTag.match(/href\s*=\s*["'](https?:\/\/[^"']+|\/\/[^"']+)["']/i);
-    if (!hrefMatch) return;
+    var href = extractAttr(openTag, 'href');
+    if (!href || !/^(https?:)?\/\//i.test(href)) return;
 
-    var href = hrefMatch[1];
     var domainMatch = href.match(/^(?:https?:)?\/\/([^\/]+)/i);
     if (!domainMatch) return;
 
     var linkDomain = domainMatch[1].replace(/^www\./i, '').toLowerCase();
     if (ownSet[linkDomain]) return;
+    if (isLightboxVideoDomain(linkDomain)) return;
 
-    var hasBlank = /target\s*=\s*["']_blank["']/i.test(openTag);
+    var target = extractAttr(openTag, 'target');
+    var hasBlank = target && target.toLowerCase() === '_blank';
     if (hasBlank) return;
 
     count++;
@@ -581,7 +624,8 @@ function checkExternalLinksMissingBlank(html, ownDomains) {
       itemsByHref[href] = {
         href: href,
         text: text || '(ingen synlig tekst - fx et ikon)',
-        domain: linkDomain
+        domain: linkDomain,
+        raw: anchor
       };
     }
   });
@@ -662,11 +706,10 @@ function checkEmptyImages(html) {
   var imgs = html.match(/<img\b[^>]*>/gi) || [];
   var items = [];
   imgs.forEach(function(tag) {
-    var srcMatch = tag.match(/\bsrc\s*=\s*["']([^"']*)["']/i);
-    if (!srcMatch || srcMatch[1].trim() === '') {
-      var altMatch = tag.match(/\balt\s*=\s*["']([^"']*)["']/i);
-      var alt = altMatch ? altMatch[1].trim() : '';
-      items.push(alt || '(ingen alt-tekst)');
+    var src = extractAttr(tag, 'src');
+    if (src === null || src.trim() === '') {
+      var alt = extractAttr(tag, 'alt');
+      items.push({ text: (alt && alt.trim()) || '(ingen alt-tekst)', raw: tag });
     }
   });
   return items;
@@ -677,6 +720,26 @@ function runAllChecks(html, url) {
   var warnings = [];
   var info = [];
   var hostname = url.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+
+  // Stien uden evt. sprogpræfiks (fx "/en/kontakt" -> "/kontakt"), så
+  // undtagelserne herunder også gælder på flersprogede sider.
+  var pagePath = '';
+  try { pagePath = new URL(url).pathname.replace(/\/+$/, '') || '/'; } catch (e) {}
+  var pagePathNoLang = stripLanguagePrefix(pagePath).toLowerCase();
+
+  // H1-tjekket springes over på kontaktsider - de har ofte ikke (og skal
+  // ikke nødvendigvis have) en klassisk H1-overskrift. Inkl. oversættelser.
+  var CONTACT_PATH_ALIASES = ['/kontakt', '/contact'];
+  var skipH1Check = CONTACT_PATH_ALIASES.indexOf(pagePathNoLang) !== -1;
+
+  // "Flere telefonnumre/emails"-advarslen giver ikke mening på sider der
+  // bevidst lister flere medarbejderes direkte kontaktoplysninger (fx et
+  // team-oversigt) - udvid listen hvis I støder på flere lignende sider.
+  var MULTI_CONTACT_EXCLUDED_PATHS = [
+    '/teamet', '/team', '/medarbejdere', '/ansatte',
+    '/staff', '/employees', '/our-team', '/mitarbeiter'
+  ];
+  var skipMultiContactCheck = MULTI_CONTACT_EXCLUDED_PATHS.indexOf(pagePathNoLang) !== -1;
 
   // Renset HTML bruges til ALLE tekst/link-baserede tjek herunder, så
   // Cookiebot/NitroPack-scripts (og andre <script>/<style>-blokke) ikke
@@ -707,10 +770,12 @@ function runAllChecks(html, url) {
 
   var h1Texts = extractH1Texts(cleanHtml);
   var h1Count = h1Texts.length;
-  if (h1Count === 0) {
-    errors.push('Ingen H1-tag fundet');
-  } else if (h1Count > 1) {
-    errors.push(h1Count + ' H1-tags fundet (bør kun være 1): "' + h1Texts.join('", "') + '"');
+  if (!skipH1Check) {
+    if (h1Count === 0) {
+      errors.push('Ingen H1-tag fundet');
+    } else if (h1Count > 1) {
+      errors.push(h1Count + ' H1-tags fundet (bør kun være 1): "' + h1Texts.join('", "') + '"');
+    }
   }
 
   if (checkStockSiteTitle(cleanHtml)) {
@@ -722,7 +787,7 @@ function runAllChecks(html, url) {
 
   var phones = extractPhoneNumbers(cleanHtml);
   var phonesWithContext = [];
-  if (phones.length > 1) {
+  if (phones.length > 1 && !skipMultiContactCheck) {
     warnings.push('Flere forskellige telefonnumre: ' + phones.join(', '));
     phonesWithContext = extractPhoneNumbersWithContext(cleanHtml);
   }
@@ -730,7 +795,7 @@ function runAllChecks(html, url) {
 
   var emails = extractEmails(cleanHtml);
   var emailsWithContext = [];
-  if (emails.length > 1) {
+  if (emails.length > 1 && !skipMultiContactCheck) {
     warnings.push('Flere forskellige emails: ' + emails.join(', '));
     emailsWithContext = extractEmailsWithContext(cleanHtml);
   }
@@ -811,17 +876,41 @@ function normalizeUrl(raw) {
   return value;
 }
 
+/**
+ * Lille "Vis kildekode"-knap der folder den rå HTML for et fund ud -
+ * nyttigt når fx et link eller billede ikke har synlig tekst (typisk et
+ * ikon), så man hurtigt kan se hvad koden faktisk indeholder.
+ */
+function buildRawToggle(raw) {
+  var pre = el('pre', { class: 'raw-code' });
+  var code = document.createElement('code');
+  code.textContent = raw;
+  pre.appendChild(code);
+  pre.style.display = 'none';
+
+  var btn = el('button', { type: 'button', class: 'raw-toggle-btn', text: 'Vis kildekode' });
+  btn.addEventListener('click', function() {
+    var hidden = pre.style.display === 'none';
+    pre.style.display = hidden ? 'block' : 'none';
+    btn.textContent = hidden ? 'Skjul kildekode' : 'Vis kildekode';
+  });
+
+  return el('div', { class: 'raw-toggle-wrap' }, [btn, pre]);
+}
+
 function buildItemList(items, iconChar) {
   var ul = el('ul', { class: 'item-list' });
   items.forEach(function(item) {
     var label = item.pageLabel || null;
     var context = item.context || '';
+    var inner = [
+      label ? el('span', { class: 'item-label', text: label }) : null,
+      el('span', { class: 'item-context', text: context })
+    ];
+    if (item.raw) inner.push(buildRawToggle(item.raw));
     var li = el('li', {}, [
       el('span', { class: 'icon', text: iconChar || '•' }),
-      el('span', {}, [
-        label ? el('span', { class: 'item-label', text: label }) : null,
-        el('span', { class: 'item-context', text: context })
-      ])
+      el('span', {}, inner)
     ]);
     ul.appendChild(li);
   });
@@ -831,15 +920,17 @@ function buildItemList(items, iconChar) {
 function buildExternalLinksList(items) {
   var ul = el('ul', { class: 'item-list' });
   items.forEach(function(item) {
+    var inner = [
+      item.pageLabel ? el('span', { class: 'item-label', text: item.pageLabel }) : null,
+      el('span', { class: 'item-context' }, [
+        document.createTextNode(item.domain ? item.domain + ': ' : ''),
+        el('a', { href: item.href, target: '_blank', rel: 'noopener', text: item.text })
+      ])
+    ];
+    if (item.raw) inner.push(buildRawToggle(item.raw));
     var li = el('li', {}, [
       el('span', { class: 'icon', text: '↗' }),
-      el('span', {}, [
-        item.pageLabel ? el('span', { class: 'item-label', text: item.pageLabel }) : null,
-        el('span', { class: 'item-context' }, [
-          document.createTextNode(item.domain ? item.domain + ': ' : ''),
-          el('a', { href: item.href, target: '_blank', rel: 'noopener', text: item.text })
-        ])
-      ])
+      el('span', {}, inner)
     ]);
     ul.appendChild(li);
   });
@@ -889,14 +980,14 @@ function pageLabel(path) {
  */
 function annotateWithPage(item, label, isExternal) {
   if (isExternal) {
-    return { pageLabel: label, href: item.href, domain: item.domain, text: item.text };
+    return { pageLabel: label, href: item.href, domain: item.domain, text: item.text, raw: item.raw };
   }
   if (typeof item === 'string') {
     return { pageLabel: label, context: item };
   }
   var extra = item.value || item.text;
   var context = item.context || '';
-  return { pageLabel: label, context: extra ? (extra + (context ? ' — ' + context : '')) : context };
+  return { pageLabel: label, context: extra ? (extra + (context ? ' — ' + context : '')) : context, raw: item.raw };
 }
 
 /**
@@ -973,8 +1064,8 @@ function buildCategoryBox(container, opts) {
     body.appendChild(block);
   });
 
-  container.appendChild(el('section', { class: 'group ' + opts.className }, [
-    el('div', { class: 'group-title', text: opts.title + ' (' + totalCount + ')' }),
+  container.appendChild(el('details', { class: 'collapsible group ' + opts.className }, [
+    el('summary', { class: 'group-title', text: opts.title + ' (' + totalCount + ')' }),
     body
   ]));
 }
@@ -1090,18 +1181,62 @@ var CONCURRENCY = 4;
 var ASSET_EXTENSION_RE = /\.(jpg|jpeg|png|gif|webp|svg|avif|pdf|zip|xml|css|js|ico|woff2?|ttf|mp4|mp3|json)(\?|$)/i;
 
 /**
+ * Normaliserer et hostname til sammenligning, så www.dinsite.dk og
+ * dinsite.dk regnes som samme domæne (ellers vil crawleren opfatte
+ * interne links med det "modsatte" www-præfiks som eksterne og ikke
+ * følge dem - kan give manglende sider i rapporten uden varsel).
+ */
+function normalizeHost(host) {
+  return (host || '').replace(/^www\./i, '').toLowerCase();
+}
+
+/**
+ * Laver en normaliseret nøgle for en URL, brugt til at opdage om to
+ * fundne links reelt peger på samme side - fx "/kontakt" og "/kontakt/"
+ * skal regnes som duplikater, ikke to forskellige sider i rapporten.
+ * Selve URL'en der bruges til at hente siden ændres IKKE af dette -
+ * kun hvilke der regnes som "allerede set".
+ */
+function canonicalPageKey(urlObj) {
+  var path = urlObj.pathname;
+  if (path.length > 1 && path.charAt(path.length - 1) === '/') {
+    path = path.slice(0, -1);
+  }
+  return normalizeHost(urlObj.host) + path + urlObj.search;
+}
+
+/**
+ * Sprogpræfikser vi genkender på flersprogede sites (fx WPML/Polylang),
+ * så de samme sti-regler (ekskluderinger, kontaktside-undtagelser osv.)
+ * automatisk også gælder under "/en/...", "/de/..." osv. Udvid listen
+ * hvis I støder på et site med et sprog der ikke står her.
+ */
+var LANGUAGE_PREFIXES = ['da', 'en', 'de', 'no', 'sv'];
+
+function stripLanguagePrefix(pathname) {
+  var m = pathname.match(/^\/([a-z]{2})(\/.*)?$/i);
+  if (m && LANGUAGE_PREFIXES.indexOf(m[1].toLowerCase()) !== -1) {
+    return m[2] || '/';
+  }
+  return pathname;
+}
+
+/**
  * Sider/stier der aldrig skal tjekkes, selvom de ligger i sitemap'et.
  * EXACT: kun selve stien skal ekskluderes (undersider under den skal
  * stadig tjekkes) - fx "/viden" som er en oversigtsside, men
  * "/viden/et-emne" skal stadig tjekkes.
  * PREFIX: stien OG alle undersider derunder ekskluderes - fx
  * "/forfatter" og "/forfatter/mikael-vukicevic/".
+ * Begge lister indeholder også engelske/tyske oversættelser, og tjekkes
+ * efter et evt. sprogpræfiks er fjernet (fx "/en/author/..." matcher
+ * "/author").
  */
-var EXCLUDED_EXACT_PATHS = ['/viden', '/cookies'];
-var EXCLUDED_PATH_PREFIXES = ['/forfatter'];
+var EXCLUDED_EXACT_PATHS = ['/viden', '/knowledge', '/cookies'];
+var EXCLUDED_PATH_PREFIXES = ['/forfatter', '/author', '/autor'];
 
 function isExcludedPath(pathname) {
-  var normalized = pathname.replace(/\/+$/, '');
+  var normalized = stripLanguagePrefix(pathname).replace(/\/+$/, '');
   if (normalized === '') normalized = '/';
 
   if (EXCLUDED_EXACT_PATHS.indexOf(normalized) !== -1) return true;
@@ -1160,7 +1295,7 @@ async function discoverSitemapUrls(originUrl, onProgress) {
     ];
   }
 
-  var originHost = new URL(originUrl).host;
+  var originHost = normalizeHost(new URL(originUrl).host);
   var pageUrls = [];
   var seenPages = {};
   var toProcess = candidates.slice();
@@ -1194,15 +1329,17 @@ async function discoverSitemapUrls(originUrl, onProgress) {
       var uLocNode = urlNodes[j].getElementsByTagName('loc')[0];
       if (!uLocNode) continue;
       var pageUrl = uLocNode.textContent.trim();
-      if (!pageUrl || seenPages[pageUrl]) continue;
+      if (!pageUrl) continue;
       if (ASSET_EXTENSION_RE.test(pageUrl)) continue;
       var parsedPageUrl;
       try {
         parsedPageUrl = new URL(pageUrl);
       } catch (e) { continue; }
-      if (parsedPageUrl.host !== originHost) continue;
+      if (normalizeHost(parsedPageUrl.host) !== originHost) continue;
       if (isExcludedPath(parsedPageUrl.pathname)) continue;
-      seenPages[pageUrl] = true;
+      var key = canonicalPageKey(parsedPageUrl);
+      if (seenPages[key]) continue;
+      seenPages[key] = true;
       pageUrls.push(pageUrl);
     }
   }
@@ -1267,7 +1404,7 @@ function extractInternalLinks(html, baseUrl, originHost) {
     } catch (e) { continue; }
     abs.hash = '';
     if (abs.protocol !== 'http:' && abs.protocol !== 'https:') continue;
-    if (abs.host !== originHost) continue;
+    if (normalizeHost(abs.host) !== originHost) continue;
     if (ASSET_EXTENSION_RE.test(abs.pathname)) continue;
     if (isExcludedPath(abs.pathname)) continue;
     found.push(abs.toString());
@@ -1282,11 +1419,12 @@ function extractInternalLinks(html, baseUrl, originHost) {
  * for kun at tjekke den ene indtastede URL.
  */
 async function crawlViaLinks(originUrl, startUrl, onProgress) {
-  var originHost = new URL(originUrl).host;
+  var originHost = normalizeHost(new URL(originUrl).host);
   var visited = {};
   var queued = {};
-  var frontier = [normalizeForCrawl(startUrl)];
-  queued[frontier[0]] = true;
+  var startNormalized = normalizeForCrawl(startUrl);
+  var frontier = [startNormalized];
+  try { queued[canonicalPageKey(new URL(startNormalized))] = true; } catch (e) {}
   var pageResults = [];
 
   while (frontier.length > 0 && pageResults.length < MAX_PAGES) {
@@ -1295,7 +1433,6 @@ async function crawlViaLinks(originUrl, startUrl, onProgress) {
 
     for (var i = 0; i < batch.length; i++) {
       var url = batch[i];
-      visited[url] = true;
       var res = responses[i];
       onProgress(pageResults.length + 1, url);
 
@@ -1305,13 +1442,24 @@ async function crawlViaLinks(originUrl, startUrl, onProgress) {
       }
 
       var finalUrl = res.finalUrl || url;
+      var finalKey;
+      try { finalKey = canonicalPageKey(new URL(finalUrl)); } catch (e) { finalKey = finalUrl; }
+
+      // Endt på en side vi (via en anden URL-variant, fx www./trailing
+      // slash, eller en omdirigering) allerede har tjekket - spring over
+      // så den ikke tælles/vises to gange i rapporten.
+      if (visited[finalKey]) continue;
+      visited[finalKey] = true;
+
       pageResults.push({ url: finalUrl, result: runAllChecks(res.html, finalUrl) });
 
       if (pageResults.length >= MAX_PAGES) continue;
 
       extractInternalLinks(res.html, finalUrl, originHost).forEach(function(link) {
-        if (!visited[link] && !queued[link]) {
-          queued[link] = true;
+        var linkKey;
+        try { linkKey = canonicalPageKey(new URL(link)); } catch (e) { linkKey = link; }
+        if (!visited[linkKey] && !queued[linkKey]) {
+          queued[linkKey] = true;
           frontier.push(link);
         }
       });
