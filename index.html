@@ -241,12 +241,17 @@
     font-size: 12.5px;
     font-weight: 700;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: 2px;
   }
-  .page-block-name {
-    color: var(--text);
+  .page-block-name-link,
+  a.page-block-name-link {
+    color: var(--navy);
+    text-decoration: none;
   }
+  .page-block-name-link:hover { text-decoration: underline; }
+
   .page-block-link,
   a.page-block-link {
     color: var(--navy);
@@ -293,6 +298,8 @@
     color: var(--text-muted);
   }
   .item-context a { color: var(--navy); }
+
+  .error-text { color: var(--error); }
 
   details.collapsible summary {
     padding: 12px 16px;
@@ -421,6 +428,20 @@ var KNOWN_EXTERNAL_DOMAINS = [
   'kinsta.cloud', 'wordpress.org', 'gstatic.com', 'googleapis.com',
 ];
 
+/**
+ * Fjerner <script>/<style>-indhold og HTML-kommentarer, så
+ * link/tekst-tjek ikke fejlagtigt fanger HTML-lignende tekststrenge der
+ * ligger inde i fx Cookiebot- eller NitroPack-scripts (deres cookie-
+ * banner/prefetch-kode indeholder ofte rå "<a href=...>"-tekst som ikke
+ * er rigtige links på siden).
+ */
+function stripScriptsAndStyles(html) {
+  return html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '');
+}
+
 function getContextSnippet(html, index, radius) {
   radius = radius || 45;
   var start = Math.max(0, index - radius);
@@ -460,7 +481,8 @@ function extractH1Texts(html) {
 function checkDeadLinks(html) {
   var socialKeywords = /facebook|instagram|linkedin|twitter|youtube|tiktok|pinterest|snapchat/i;
 
-  var cleaned = html.replace(/id=["']brx-header["'][\s\S]*?(?=id=["']brx-content["']|<main\b)/i, '');
+  var cleaned = stripScriptsAndStyles(html);
+  cleaned = cleaned.replace(/id=["']brx-header["'][\s\S]*?(?=id=["']brx-content["']|<main\b)/i, '');
   cleaned = cleaned.replace(/<header\b[\s\S]*?<\/header>/gi, '');
   cleaned = cleaned.replace(/<nav\b[\s\S]*?<\/nav>/gi, '');
 
@@ -502,7 +524,7 @@ function extractFrequentDomains(html, ownHostname, excludeDomains) {
   excludeDomains.forEach(function(d) { excludeSet[d] = true; });
   excludeSet[ownHostname.replace(/^www\./i, '').toLowerCase()] = true;
 
-  var anchorTags = html.match(/<a\b[^>]*>/gi) || [];
+  var anchorTags = stripScriptsAndStyles(html).match(/<a\b[^>]*>/gi) || [];
   var counts = {};
 
   anchorTags.forEach(function(tag) {
@@ -524,7 +546,8 @@ function checkExternalLinksMissingBlank(html, ownDomains) {
     if (d) ownSet[d.replace(/^www\./i, '').toLowerCase()] = true;
   });
 
-  var anchorTags = html.match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) || [];
+  var cleaned = stripScriptsAndStyles(html);
+  var anchorTags = cleaned.match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) || [];
   var count = 0;
   var domains = {};
   var itemsByHref = {};
@@ -835,13 +858,13 @@ function normalizeUrl(raw) {
 function buildItemList(items, iconChar) {
   var ul = el('ul', { class: 'item-list' });
   items.forEach(function(item) {
-    var label = typeof item === 'string' ? null : (item.value || item.text || item.domain);
-    var context = typeof item === 'string' ? item : (item.context || item.text);
+    var label = item.pageLabel || null;
+    var context = item.context || '';
     var li = el('li', {}, [
       el('span', { class: 'icon', text: iconChar || '•' }),
       el('span', {}, [
         label ? el('span', { class: 'item-label', text: label }) : null,
-        el('span', { class: 'item-context', text: context || '' })
+        el('span', { class: 'item-context', text: context })
       ])
     ]);
     ul.appendChild(li);
@@ -855,8 +878,9 @@ function buildExternalLinksList(items) {
     var li = el('li', {}, [
       el('span', { class: 'icon', text: '↗' }),
       el('span', {}, [
-        el('span', { class: 'item-label', text: item.domain }),
+        item.pageLabel ? el('span', { class: 'item-label', text: item.pageLabel }) : null,
         el('span', { class: 'item-context' }, [
+          document.createTextNode(item.domain ? item.domain + ': ' : ''),
           el('a', { href: item.href, target: '_blank', rel: 'noopener', text: item.text })
         ])
       ])
@@ -902,36 +926,94 @@ function pageLabel(path) {
 }
 
 /**
+ * Omdanner ét "hvor"-fund (streng, {value,context}, {text,context} eller
+ * external-link-objekt) til en ensartet form der bare fortæller hvilken
+ * side fundet stammer fra - det er alt man behøver at vide, når flere
+ * sider med samme fejl/advarsel er slået sammen i én blok.
+ */
+function annotateWithPage(item, label, isExternal) {
+  if (isExternal) {
+    return { pageLabel: label, href: item.href, domain: item.domain, text: item.text };
+  }
+  if (typeof item === 'string') {
+    return { pageLabel: label, context: item };
+  }
+  var extra = item.value || item.text;
+  var context = item.context || '';
+  return { pageLabel: label, context: extra ? (extra + (context ? ' — ' + context : '')) : context };
+}
+
+/**
+ * Slår "hvor"-fund sammen på tværs af flere sider (der har fået samme
+ * fejl/advarsel og derfor er grupperet i én blok), og mærker hvert fund
+ * med hvilken side det kommer fra.
+ */
+function mergeHvorGroups(pages, hvorGroupsFn) {
+  if (pages.length === 0) return [];
+  var template = hvorGroupsFn(pages[0].result);
+  var merged = template.map(function(cat) {
+    return { title: cat.title, icon: cat.icon, external: cat.external, items: [] };
+  });
+
+  pages.forEach(function(p) {
+    var label = pageLabel(p.path);
+    hvorGroupsFn(p.result).forEach(function(g, idx) {
+      if (!g.items) return;
+      g.items.forEach(function(item) {
+        merged[idx].items.push(annotateWithPage(item, label, g.external));
+      });
+    });
+  });
+
+  return merged;
+}
+
+/**
  * Bygger ÉN kategori-boks (Fejl eller Advarsler): overskrift med samlet
- * antal, og indeni ét underafsnit pr. URL der rent faktisk har noget i
- * denne kategori - med sidenavn som mellemrubrik (+ lille link til
- * URL'en), listen af fund, og en "Se hvor"-detalje for netop den side.
- * Sider uden noget i denne kategori vises slet ikke.
+ * antal. Sider der har PRÆCIS de samme fejl/advarsler slås sammen i én
+ * blok med sidenavnene delt af komma, og "Se hvor" viser hvilken af de
+ * sammenlagte sider hvert fund kommer fra. Sider uden noget i denne
+ * kategori vises slet ikke.
  */
 function buildCategoryBox(container, opts) {
-  var pages = opts.pages.filter(function(p) { return p.messages.length > 0; });
-  if (pages.length === 0) return;
+  var candidates = opts.pages.filter(function(p) { return p.result[opts.messagesKey].length > 0; });
+  if (candidates.length === 0) return;
 
-  var totalCount = pages.reduce(function(sum, p) { return sum + p.messages.length; }, 0);
+  var totalCount = candidates.reduce(function(sum, p) { return sum + p.result[opts.messagesKey].length; }, 0);
+
+  var groups = [];
+  var keyToGroup = {};
+  candidates.forEach(function(p) {
+    var messages = p.result[opts.messagesKey];
+    var key = JSON.stringify(messages);
+    if (!keyToGroup[key]) {
+      keyToGroup[key] = { messages: messages, pages: [] };
+      groups.push(keyToGroup[key]);
+    }
+    keyToGroup[key].pages.push(p);
+  });
 
   var body = el('div', { class: 'group-body' });
-  pages.forEach(function(p) {
+  groups.forEach(function(g) {
     var block = el('div', { class: 'page-block' });
-    block.appendChild(el('div', { class: 'page-block-url' }, [
-      el('span', { class: 'page-block-name', text: pageLabel(p.path) }),
-      el('a', { href: p.url, target: '_blank', rel: 'noopener', class: 'page-block-link', text: '↗' })
-    ]));
+
+    var nameEls = [];
+    g.pages.forEach(function(p, idx) {
+      if (idx > 0) nameEls.push(document.createTextNode(', '));
+      nameEls.push(el('a', { href: p.url, target: '_blank', rel: 'noopener', class: 'page-block-name-link', text: pageLabel(p.path) }));
+    });
+    block.appendChild(el('div', { class: 'page-block-url' }, nameEls));
 
     var ul = el('ul', { class: 'item-list' });
-    p.messages.forEach(function(msg) {
+    g.messages.forEach(function(msg) {
       ul.appendChild(el('li', {}, [
         el('span', { class: 'icon', text: opts.icon }),
-        el('span', { text: msg })
+        el('span', { text: msg, class: opts.className === 'errors' ? 'error-text' : '' })
       ]));
     });
     block.appendChild(ul);
 
-    buildHvorDetails(block, p.hvorGroups);
+    buildHvorDetails(block, mergeHvorGroups(g.pages, opts.hvorGroupsFn));
     body.appendChild(block);
   });
 
@@ -974,8 +1056,10 @@ function buildSiteReport(pageResults, originUrl) {
     className: 'errors',
     title: 'Fejl',
     icon: '✕',
+    messagesKey: 'errors',
+    hvorGroupsFn: errorHvorGroups,
     pages: pageResults.filter(function(p) { return p.result; }).map(function(p) {
-      return { path: pathOf(p.url), url: p.url, messages: p.result.errors, hvorGroups: errorHvorGroups(p.result) };
+      return { path: pathOf(p.url), url: p.url, result: p.result };
     })
   });
 
@@ -983,8 +1067,10 @@ function buildSiteReport(pageResults, originUrl) {
     className: 'warnings',
     title: 'Advarsler',
     icon: '!',
+    messagesKey: 'warnings',
+    hvorGroupsFn: warningHvorGroups,
     pages: pageResults.filter(function(p) { return p.result; }).map(function(p) {
-      return { path: pathOf(p.url), url: p.url, messages: p.result.warnings, hvorGroups: warningHvorGroups(p.result) };
+      return { path: pathOf(p.url), url: p.url, result: p.result };
     })
   });
 
@@ -1033,6 +1119,31 @@ function buildSiteReport(pageResults, originUrl) {
 var MAX_PAGES = 150;
 var CONCURRENCY = 4;
 var ASSET_EXTENSION_RE = /\.(jpg|jpeg|png|gif|webp|svg|avif|pdf|zip|xml|css|js|ico|woff2?|ttf|mp4|mp3|json)(\?|$)/i;
+
+/**
+ * Sider/stier der aldrig skal tjekkes, selvom de ligger i sitemap'et.
+ * EXACT: kun selve stien skal ekskluderes (undersider under den skal
+ * stadig tjekkes) - fx "/viden" som er en oversigtsside, men
+ * "/viden/et-emne" skal stadig tjekkes.
+ * PREFIX: stien OG alle undersider derunder ekskluderes - fx
+ * "/forfatter" og "/forfatter/mikael-vukicevic/".
+ */
+var EXCLUDED_EXACT_PATHS = ['/viden', '/cookies'];
+var EXCLUDED_PATH_PREFIXES = ['/forfatter'];
+
+function isExcludedPath(pathname) {
+  var normalized = pathname.replace(/\/+$/, '');
+  if (normalized === '') normalized = '/';
+
+  if (EXCLUDED_EXACT_PATHS.indexOf(normalized) !== -1) return true;
+
+  for (var i = 0; i < EXCLUDED_PATH_PREFIXES.length; i++) {
+    var prefix = EXCLUDED_PATH_PREFIXES[i];
+    if (normalized === prefix || normalized.indexOf(prefix + '/') === 0) return true;
+  }
+
+  return false;
+}
 
 async function fetchViaWorker(url) {
   try {
@@ -1116,9 +1227,12 @@ async function discoverSitemapUrls(originUrl, onProgress) {
       var pageUrl = uLocNode.textContent.trim();
       if (!pageUrl || seenPages[pageUrl]) continue;
       if (ASSET_EXTENSION_RE.test(pageUrl)) continue;
+      var parsedPageUrl;
       try {
-        if (new URL(pageUrl).host !== originHost) continue;
+        parsedPageUrl = new URL(pageUrl);
       } catch (e) { continue; }
+      if (parsedPageUrl.host !== originHost) continue;
+      if (isExcludedPath(parsedPageUrl.pathname)) continue;
       seenPages[pageUrl] = true;
       pageUrls.push(pageUrl);
     }
