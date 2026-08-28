@@ -120,18 +120,6 @@
   .search-card button:hover { background: var(--navy-dark); }
   .search-card button:disabled { opacity: 0.6; cursor: default; }
 
-  .demo-link {
-    text-align: center;
-    margin: 12px 0 0;
-  }
-  .demo-link a {
-    font-size: 13px;
-    color: var(--navy);
-    text-decoration: none;
-    font-weight: 600;
-  }
-  .demo-link a:hover { text-decoration: underline; }
-
   #status {
     margin-top: 18px;
     font-size: 14px;
@@ -378,6 +366,17 @@
     margin-bottom: 12px;
   }
 
+  .crawl-warning {
+    background: #fdf3e0;
+    border: 1px solid #f3ddac;
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 13px;
+    color: var(--text);
+    margin-bottom: 12px;
+    line-height: 1.5;
+  }
+
   @media (max-width: 480px) {
     .verdict-card { padding: 22px 16px; }
   }
@@ -400,7 +399,6 @@
     <input type="text" id="urlInput" placeholder="https://dinsite.kinsta.cloud/" autocomplete="off" aria-label="Domæne på det site der skal tjekkes">
     <button id="checkBtn">Tjek hele siden</button>
   </div>
-  <p class="demo-link"><a href="#" id="demoLink">Se et eksempel på resultatet →</a></p>
 
   <div id="status"></div>
   <div id="result"></div>
@@ -780,63 +778,8 @@ function runAllChecks(html, url) {
 
 var urlInput = document.getElementById('urlInput');
 var checkBtn = document.getElementById('checkBtn');
-var demoLink = document.getElementById('demoLink');
 var statusEl = document.getElementById('status');
 var resultEl = document.getElementById('result');
-
-/**
- * Fiktiv HTML brugt af "Se et eksempel"-linket, så man kan se rapporten
- * uden at Worker'en er sat op endnu. To fiktive sider: forsiden har en
- * blanding af fejl/advarsler/OK-info, kontaktsiden er helt ren - så både
- * en fejlende og en bestående side vises i listen.
- */
-var DEMO_ORIGIN = 'https://eksempel-side.kinsta.cloud';
-var DEMO_HOME_HTML = [
-  '<html><head><title>Best Stock – Håndværker A/S</title></head><body>',
-  '<header id="brx-header"><nav><a href="#">Menu</a></nav></header>',
-  '<main id="brx-content">',
-  '<h1>Velkommen til Håndværker A/S</h1>',
-  '<h1>Vi klarer opgaven</h1>',
-  '<p>Ring på 88 88 88 88 eller skriv til firma@mail.dk</p>',
-  '<p>Kontakt os også på <a href="tel:+4520304050">20 30 40 50</a> eller',
-  '<a href="tel:+4520304099">20 30 40 99</a></p>',
-  '<a href="mailto:info@haandvaerker.dk">info@haandvaerker.dk</a>',
-  '<a href="mailto:salg@haandvaerker.dk">salg@haandvaerker.dk</a>',
-  '<p>CVR: 12345678</p>',
-  '<p>Vi er stolte af at være en del af Best One familien.</p>',
-  '<a href="#">Læs mere her</a>',
-  '<a href="https://www.trustpilot.com/review/haandvaerker.dk">Se anmeldelser</a>',
-  '<a href="https://www.instagram.com/haandvaerkerdk">Instagram</a>',
-  '<img src="/logo/placeholder-logo.png" alt="">',
-  '<img src="" alt="Tomt banner-billede">',
-  '</main>',
-  '<footer id="brx-footer"><p>Håndværker A/S – Erhvervsvej 12, 8000 Aarhus C</p></footer>',
-  '</body></html>'
-].join('\n');
-
-var DEMO_CONTACT_HTML = [
-  '<html><head><title>Kontakt – Håndværker A/S</title></head><body>',
-  '<header id="brx-header"><nav><a href="/">Forside</a></nav></header>',
-  '<main id="brx-content">',
-  '<h1>Kontakt os</h1>',
-  '<p>Ring på <a href="tel:+4520304050">20 30 40 50</a></p>',
-  '<a href="mailto:info@haandvaerker.dk">info@haandvaerker.dk</a>',
-  '<p>CVR: 12345678</p>',
-  '</main>',
-  '<footer id="brx-footer"><p>Håndværker A/S – Erhvervsvej 12, 8000 Aarhus C</p></footer>',
-  '</body></html>'
-].join('\n');
-
-demoLink.addEventListener('click', function(e) {
-  e.preventDefault();
-  urlInput.value = DEMO_ORIGIN;
-  setStatus('');
-  var pageResults = [
-    { url: DEMO_ORIGIN + '/', result: runAllChecks(DEMO_HOME_HTML, DEMO_ORIGIN + '/') },
-    { url: DEMO_ORIGIN + '/kontakt/', result: runAllChecks(DEMO_CONTACT_HTML, DEMO_ORIGIN + '/kontakt/') }
-  ];
-  buildSiteReport(pageResults, DEMO_ORIGIN);
-});
 
 function setStatus(text, isError, loading) {
   statusEl.innerHTML = '';
@@ -1064,6 +1007,12 @@ function buildSiteReport(pageResults, originUrl) {
   var summaryText = pageResults.length + ' side(r) tjekket';
   if (okPages.length > 0) summaryText += ' – ' + okPages.length + ' bestået uden fund (vises ikke)';
   resultEl.appendChild(el('div', { class: 'site-summary', text: summaryText }));
+
+  if (pageResults.length <= 1) {
+    resultEl.appendChild(el('div', { class: 'crawl-warning' }, [
+      document.createTextNode('⚠️ Kun 1 side blev fundet og tjekket. Der blev ikke fundet noget sitemap, og der blev heller ikke fundet interne links at følge videre fra denne side - så resten af sitet er sandsynligvis ikke blevet tjekket. Tjek at URL\'en er korrekt, og at siden rent faktisk linker til sine undersider.')
+    ]));
+  }
 
   buildCategoryBox(resultEl, {
     className: 'errors',
