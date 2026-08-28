@@ -214,6 +214,13 @@
   .verdict-card.fail .verdict-title { color: var(--error); }
   .verdict-card.fail .verdict-sub { color: var(--text); }
 
+  .verdict-card.unknown {
+    background: #fdf3e0;
+    border: 1px solid #f3ddac;
+  }
+  .verdict-card.unknown .verdict-title { color: var(--warn); }
+  .verdict-card.unknown .verdict-sub { color: var(--text); }
+
   section.group {
     background: var(--card);
     border: 1px solid var(--border);
@@ -673,29 +680,34 @@ function runAllChecks(html, url) {
   var info = [];
   var hostname = url.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
 
+  // Renset HTML bruges til ALLE tekst/link-baserede tjek herunder, så
+  // Cookiebot/NitroPack-scripts (og andre <script>/<style>-blokke) ikke
+  // ved en fejl bliver læst som rigtigt sideindhold.
+  var cleanHtml = stripScriptsAndStyles(html);
+
   STOCK_PATTERNS.forEach(function(check) {
     check.pattern.lastIndex = 0;
-    var matches = html.match(check.pattern);
+    var matches = cleanHtml.match(check.pattern);
     if (matches) errors.push(check.label + ' (' + matches.length + 'x)');
   });
 
-  var bestOneItems = checkBestOne(html);
+  var bestOneItems = checkBestOne(cleanHtml);
   if (bestOneItems.length > 0) errors.push('"Best One" på kundens side (' + bestOneItems.length + 'x)');
 
-  var undersideMatches = html.match(/>\s*Underside\s*</gi);
+  var undersideMatches = cleanHtml.match(/>\s*Underside\s*</gi);
   if (undersideMatches) errors.push('"Underside" som nav-label (' + undersideMatches.length + 'x)');
 
-  var navnMatches = html.match(/>\s*Navn\s*</gi);
+  var navnMatches = cleanHtml.match(/>\s*Navn\s*</gi);
   if (navnMatches && navnMatches.length >= 2) errors.push('"Navn" som anmeldernavn (' + navnMatches.length + 'x)');
 
-  var deadLinks = checkDeadLinks(html);
+  var deadLinks = checkDeadLinks(cleanHtml);
   if (deadLinks.count > 0) {
     var deadText = deadLinks.count + ' link(s) peger på # eller ingenting';
     if (deadLinks.someCount > 0) deadText += ' (heraf ' + deadLinks.someCount + ' SoMe-links)';
     errors.push(deadText);
   }
 
-  var h1Texts = extractH1Texts(html);
+  var h1Texts = extractH1Texts(cleanHtml);
   var h1Count = h1Texts.length;
   if (h1Count === 0) {
     errors.push('Ingen H1-tag fundet');
@@ -703,49 +715,49 @@ function runAllChecks(html, url) {
     errors.push(h1Count + ' H1-tags fundet (bør kun være 1): "' + h1Texts.join('", "') + '"');
   }
 
-  if (checkStockSiteTitle(html)) {
+  if (checkStockSiteTitle(cleanHtml)) {
     errors.push('Site Titel er stadig "Best Stock" - ret i WP-admin under Indstillinger → Generelt → Webstedstitel');
   }
 
-  var logoMatches = html.match(/[\/"']placeholder-logo(-\d+x\d+)?\.(png|jpe?g|svg|webp|gif)["']/gi);
+  var logoMatches = cleanHtml.match(/[\/"']placeholder-logo(-\d+x\d+)?\.(png|jpe?g|svg|webp|gif)["']/gi);
   if (logoMatches) warnings.push('Placeholder-logo i billedfil (' + logoMatches.length + 'x)');
 
-  var phones = extractPhoneNumbers(html);
+  var phones = extractPhoneNumbers(cleanHtml);
   var phonesWithContext = [];
   if (phones.length > 1) {
     warnings.push('Flere forskellige telefonnumre: ' + phones.join(', '));
-    phonesWithContext = extractPhoneNumbersWithContext(html);
+    phonesWithContext = extractPhoneNumbersWithContext(cleanHtml);
   }
   if (phones.length > 0) info.push({ icon: '📞', label: 'Telefon', text: phones.join(', ') });
 
-  var emails = extractEmails(html);
+  var emails = extractEmails(cleanHtml);
   var emailsWithContext = [];
   if (emails.length > 1) {
     warnings.push('Flere forskellige emails: ' + emails.join(', '));
-    emailsWithContext = extractEmailsWithContext(html);
+    emailsWithContext = extractEmailsWithContext(cleanHtml);
   }
   if (emails.length > 0) info.push({ icon: '✉️', label: 'Email', text: emails.join(', ') });
 
   var emailDomains = emails.map(function(e) { return e.split('@')[1]; });
-  var frequentDomains = extractFrequentDomains(html, hostname, KNOWN_EXTERNAL_DOMAINS.concat(emailDomains));
+  var frequentDomains = extractFrequentDomains(cleanHtml, hostname, KNOWN_EXTERNAL_DOMAINS.concat(emailDomains));
   var ownDomains = [hostname].concat(emailDomains).concat(frequentDomains);
-  var externalLinks = checkExternalLinksMissingBlank(html, ownDomains);
+  var externalLinks = checkExternalLinksMissingBlank(cleanHtml, ownDomains);
   if (externalLinks.count > 0) {
     errors.push(externalLinks.count + ' eksterne link(s) åbner ikke i ny fane (' + externalLinks.domains.join(', ') + ')');
   }
 
-  var address = extractAddress(html);
+  var address = extractAddress(cleanHtml);
   if (address) info.push({ icon: '📍', label: 'Adresse', text: address });
 
-  var cvrs = extractCVRs(html);
+  var cvrs = extractCVRs(cleanHtml);
   var cvrsWithContext = [];
   if (cvrs.length > 1) {
     warnings.push('Flere forskellige CVR-numre: ' + cvrs.join(', '));
-    cvrsWithContext = extractCVRsWithContext(html);
+    cvrsWithContext = extractCVRsWithContext(cleanHtml);
   }
   if (cvrs.length > 0) info.push({ icon: '🏢', label: 'CVR', text: cvrs.join(', ') });
 
-  var emptyImageAlts = checkEmptyImages(html);
+  var emptyImageAlts = checkEmptyImages(cleanHtml);
   if (emptyImageAlts.length > 0) errors.push(emptyImageAlts.length + ' billede(r) med tom eller manglende src');
 
   return {
@@ -1099,12 +1111,19 @@ function buildSiteReport(pageResults, originUrl) {
     resultEl.appendChild(el('div', { class: 'item-list-empty', text: 'Ingen fejl eller advarsler fundet på nogen sider.' }));
   }
 
-  var siteHasErrors = errorCount > 0;
-  var verdictClass = siteHasErrors ? 'fail' : 'pass';
-  var verdictTitle = siteHasErrors ? '❌ Dumpet' : '✅ Bestået';
-  var verdictSub = siteHasErrors
-    ? errorCount + ' side(r) har fejl – ret dem og tjek igen.'
-    : null;
+  var anyPageChecked = pageResults.some(function(p) { return !!p.result; });
+  var verdictClass, verdictTitle, verdictSub;
+
+  if (!anyPageChecked) {
+    verdictClass = 'unknown';
+    verdictTitle = '⚠️ Kunne ikke tjekkes';
+    verdictSub = 'Ingen sider kunne hentes – tjek om domænet er korrekt, eller om siden kræver login/adgangskode (se "Kunne ikke hentes" ovenfor).';
+  } else {
+    var siteHasErrors = errorCount > 0;
+    verdictClass = siteHasErrors ? 'fail' : 'pass';
+    verdictTitle = siteHasErrors ? '❌ Dumpet' : '✅ Bestået';
+    verdictSub = siteHasErrors ? errorCount + ' side(r) har fejl – ret dem og tjek igen.' : null;
+  }
 
   resultEl.appendChild(el('div', { class: 'verdict-card ' + verdictClass }, [
     el('div', { class: 'verdict-title', text: verdictTitle }),
@@ -1268,6 +1287,91 @@ async function checkAllPages(urls, onProgress) {
   return results;
 }
 
+function normalizeForCrawl(url) {
+  try {
+    var u = new URL(url);
+    u.hash = '';
+    return u.toString();
+  } catch (e) {
+    return url;
+  }
+}
+
+/**
+ * Finder interne links i HTML'en (samme domæne, ikke ekskluderede
+ * stier, ikke filer/assets) - bruges til at crawle et site der ikke har
+ * noget sitemap, ved i stedet at følge de links siden selv linker til
+ * (ligesom en almindelig besøgende ville browse rundt).
+ */
+function extractInternalLinks(html, baseUrl, originHost) {
+  var cleaned = stripScriptsAndStyles(html);
+  var re = /<a\b[^>]*href\s*=\s*["']([^"']+)["']/gi;
+  var m;
+  var found = [];
+  while ((m = re.exec(cleaned)) !== null) {
+    var raw = m[1].trim();
+    if (!raw || raw.charAt(0) === '#') continue;
+    if (/^(javascript|mailto|tel):/i.test(raw)) continue;
+    var abs;
+    try {
+      abs = new URL(raw, baseUrl);
+    } catch (e) { continue; }
+    abs.hash = '';
+    if (abs.protocol !== 'http:' && abs.protocol !== 'https:') continue;
+    if (abs.host !== originHost) continue;
+    if (ASSET_EXTENSION_RE.test(abs.pathname)) continue;
+    if (isExcludedPath(abs.pathname)) continue;
+    found.push(abs.toString());
+  }
+  return found;
+}
+
+/**
+ * Fallback når intet sitemap findes (fx fordi sitet endnu ikke er
+ * live/indekseret, og SEO-pluginet derfor ikke genererer et sitemap):
+ * crawler sitet ved at følge interne links fra side til side, i stedet
+ * for kun at tjekke den ene indtastede URL.
+ */
+async function crawlViaLinks(originUrl, startUrl, onProgress) {
+  var originHost = new URL(originUrl).host;
+  var visited = {};
+  var queued = {};
+  var frontier = [normalizeForCrawl(startUrl)];
+  queued[frontier[0]] = true;
+  var pageResults = [];
+
+  while (frontier.length > 0 && pageResults.length < MAX_PAGES) {
+    var batch = frontier.splice(0, CONCURRENCY);
+    var responses = await Promise.all(batch.map(function(url) { return fetchViaWorker(url); }));
+
+    for (var i = 0; i < batch.length; i++) {
+      var url = batch[i];
+      visited[url] = true;
+      var res = responses[i];
+      onProgress(pageResults.length + 1, url);
+
+      if (!res.ok) {
+        pageResults.push({ url: url, error: res.error });
+        continue;
+      }
+
+      var finalUrl = res.finalUrl || url;
+      pageResults.push({ url: finalUrl, result: runAllChecks(res.html, finalUrl) });
+
+      if (pageResults.length >= MAX_PAGES) continue;
+
+      extractInternalLinks(res.html, finalUrl, originHost).forEach(function(link) {
+        if (!visited[link] && !queued[link]) {
+          queued[link] = true;
+          frontier.push(link);
+        }
+      });
+    }
+  }
+
+  return pageResults;
+}
+
 async function runCheck() {
   var raw = urlInput.value.trim();
   if (!raw) {
@@ -1297,17 +1401,22 @@ async function runCheck() {
     setStatus(msg, false, true);
   });
 
-  if (pageUrls.length === 0) {
-    pageUrls = [normalized];
-    setStatus('Intet sitemap fundet – tjekker kun den indtastede side …', false, true);
+  var pageResults;
+  var capped;
+
+  if (pageUrls.length > 1) {
+    capped = pageUrls.length > MAX_PAGES;
+    if (capped) pageUrls = pageUrls.slice(0, MAX_PAGES);
+    pageResults = await checkAllPages(pageUrls, function(done, total) {
+      setStatus('Tjekker side ' + done + ' af ' + total + ' …', false, true);
+    });
+  } else {
+    setStatus('Intet sitemap fundet (fx pga. "noindex" på et ikke-live site) – finder sider ved at følge links på sitet …', false, true);
+    pageResults = await crawlViaLinks(originUrl, normalized, function(count, url) {
+      setStatus('Tjekker side ' + count + ' (følger interne links) …', false, true);
+    });
+    capped = pageResults.length >= MAX_PAGES;
   }
-
-  var capped = pageUrls.length > MAX_PAGES;
-  if (capped) pageUrls = pageUrls.slice(0, MAX_PAGES);
-
-  var pageResults = await checkAllPages(pageUrls, function(done, total) {
-    setStatus('Tjekker side ' + done + ' af ' + total + ' …', false, true);
-  });
 
   setStatus(capped ? 'Sitet har flere end ' + MAX_PAGES + ' sider – kun de første ' + MAX_PAGES + ' blev tjekket.' : '', capped);
   buildSiteReport(pageResults, originUrl);
