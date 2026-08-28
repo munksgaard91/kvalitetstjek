@@ -668,6 +668,22 @@ function extractEmailsWithContext(html) {
   return items;
 }
 
+/**
+ * Tæller hvor mange FORSKELLIGE domæner der optræder blandt en liste af
+ * emails. Flere emails på samme domæne (fx flere medarbejdere hos
+ * samme firma) er helt normalt og skal ikke give en advarsel - det er
+ * kun en advarsel værd hvis der optræder emails fra reelt forskellige
+ * domæner (kan indikere en glemt/forkert adresse et sted på siden).
+ */
+function countUniqueEmailDomains(emails) {
+  var seen = {};
+  emails.forEach(function(email) {
+    var domain = email.split('@')[1];
+    if (domain) seen[domain.toLowerCase()] = true;
+  });
+  return Object.keys(seen).length;
+}
+
 function extractCVRsWithContext(html) {
   var regex = /CVR[:\s]*(\d{8})/gi;
   var match;
@@ -795,7 +811,7 @@ function runAllChecks(html, url) {
 
   var emails = extractEmails(cleanHtml);
   var emailsWithContext = [];
-  if (emails.length > 1 && !skipMultiContactCheck) {
+  if (emails.length > 1 && !skipMultiContactCheck && countUniqueEmailDomains(emails) > 1) {
     warnings.push('Flere forskellige emails: ' + emails.join(', '));
     emailsWithContext = extractEmailsWithContext(cleanHtml);
   }
@@ -1101,7 +1117,7 @@ function buildSiteReport(pageResults, originUrl) {
 
   if (pageResults.length <= 1) {
     resultEl.appendChild(el('div', { class: 'crawl-warning' }, [
-      document.createTextNode('⚠️ Kun 1 side blev fundet og tjekket. Der blev ikke fundet noget sitemap, og der blev heller ikke fundet interne links at følge videre fra denne side - så resten af sitet er sandsynligvis ikke blevet tjekket. Tjek at URL\'en er korrekt, og at siden rent faktisk linker til sine undersider.')
+      document.createTextNode('⚠️ Kun 1 side blev fundet og tjekket. Enten findes der intet sitemap og ingen interne links kunne følges videre, eller også pegede alle fundne sider reelt på den samme side. Tjek at URL\'en er korrekt, og at siden rent faktisk linker til sine undersider.')
     ]));
   }
 
@@ -1351,6 +1367,7 @@ async function checkAllPages(urls, onProgress) {
   var results = new Array(urls.length);
   var nextIndex = 0;
   var done = 0;
+  var visited = {};
 
   async function worker() {
     while (nextIndex < urls.length) {
@@ -1361,16 +1378,29 @@ async function checkAllPages(urls, onProgress) {
       onProgress(done, urls.length);
       if (!res.ok) {
         results[i] = { url: url, error: res.error };
-      } else {
-        results[i] = { url: res.finalUrl || url, result: runAllChecks(res.html, res.finalUrl || url) };
+        continue;
       }
+
+      var finalUrl = res.finalUrl || url;
+      var finalKey;
+      try { finalKey = canonicalPageKey(new URL(finalUrl)); } catch (e) { finalKey = finalUrl; }
+
+      // To forskellige sitemap-URL'er kan i sjældne tilfælde ende samme
+      // sted efter en omdirigering (fx http->https, eller www-skift) -
+      // spring den anden over så den ikke tælles/vises to gange.
+      if (visited[finalKey]) {
+        results[i] = null;
+        continue;
+      }
+      visited[finalKey] = true;
+      results[i] = { url: finalUrl, result: runAllChecks(res.html, finalUrl) };
     }
   }
 
   var workers = [];
   for (var w = 0; w < CONCURRENCY; w++) workers.push(worker());
   await Promise.all(workers);
-  return results;
+  return results.filter(function(r) { return r !== null; });
 }
 
 function normalizeForCrawl(url) {
