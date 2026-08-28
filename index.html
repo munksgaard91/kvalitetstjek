@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kvalitetstjek – Best One</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #225581;
+    --navy-dark: #1a4266;
+    --error: #c5221f;
+    --warn: #b26a00;
+    --ok: #188038;
+    --bg: #f4f6f8;
+    --card: #ffffff;
+    --border: #e1e6eb;
+    --text: #1c2b3a;
+    --text-muted: #5b6b7a;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  header {
+    padding: 56px 24px 24px;
+  }
+
+  header .inner {
+    max-width: 760px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 10px;
+  }
+
+  .logo-mark {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    background: var(--navy);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 22px;
+    flex-shrink: 0;
+  }
+
+  header h1 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  header p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--text-muted);
+  }
+
+  main {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 44px 24px 60px;
+  }
+
+  .search-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: 0 1px 2px rgba(20,40,60,0.04);
+  }
+
+  .search-card input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 15px;
+    font-family: inherit;
+    outline: none;
+  }
+
+  .search-card input:focus {
+    border-color: var(--navy);
+  }
+
+  .search-card button {
+    width: 100%;
+    padding: 12px 22px;
+    background: var(--navy);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .search-card button:hover { background: var(--navy-dark); }
+  .search-card button:disabled { opacity: 0.6; cursor: default; }
+
+  .demo-link {
+    text-align: center;
+    margin: 12px 0 0;
+  }
+  .demo-link a {
+    font-size: 13px;
+    color: var(--navy);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .demo-link a:hover { text-decoration: underline; }
+
+  #status {
+    margin-top: 18px;
+    font-size: 14px;
+    color: var(--text-muted);
+    display: none;
+    align-items: center;
+    gap: 10px;
+  }
+
+  #status.visible { display: flex; }
+
+  .spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--navy);
+    border-radius: 50%;
+    flex-shrink: 0;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  #result { margin-top: 22px; }
+
+  .report-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .report-header .hostname {
+    font-weight: 600;
+    font-size: 15px;
+  }
+
+  .report-header a {
+    color: var(--navy);
+    font-size: 13px;
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .report-header a:hover { text-decoration: underline; }
+
+  .verdict-card {
+    border-radius: 12px;
+    padding: 26px 22px;
+    text-align: center;
+    margin-top: 18px;
+  }
+
+  .verdict-card .verdict-title {
+    font-weight: 800;
+    font-size: 26px;
+    letter-spacing: 0.02em;
+  }
+
+  .verdict-card .verdict-sub {
+    font-weight: 500;
+    font-size: 14px;
+    margin-top: 6px;
+  }
+
+  .verdict-card.pass {
+    background: #eaf7ee;
+    border: 1px solid #bfe6c9;
+  }
+  .verdict-card.pass .verdict-title { color: var(--ok); }
+  .verdict-card.pass .verdict-sub { color: var(--text); }
+
+  .verdict-card.fail {
+    background: #fdecea;
+    border: 1px solid #f3c2bf;
+  }
+  .verdict-card.fail .verdict-title { color: var(--error); }
+  .verdict-card.fail .verdict-sub { color: var(--text); }
+
+  section.group {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+
+  section.group > .group-title {
+    padding: 12px 16px;
+    font-weight: 700;
+    font-size: 13.5px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  section.group.errors > .group-title { color: var(--error); }
+  section.group.warnings > .group-title { color: var(--warn); }
+
+  .page-block {
+    border-bottom: 1px solid var(--border);
+  }
+  .page-block:last-child { border-bottom: none; }
+
+  .page-block-url {
+    padding: 12px 16px 4px;
+    font-size: 12.5px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .page-block-name {
+    color: var(--text);
+  }
+  .page-block-link,
+  a.page-block-link {
+    color: var(--navy);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  .page-block-link:hover { text-decoration: underline; }
+
+  .page-block .item-list li:last-child {
+    border-bottom: none;
+  }
+
+  .page-block details.collapsible {
+    margin: 4px 16px 12px;
+    border-radius: 8px;
+  }
+
+  ul.item-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  ul.item-list li {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13.5px;
+    line-height: 1.5;
+    display: flex;
+    gap: 10px;
+  }
+  ul.item-list li:last-child { border-bottom: none; }
+
+  ul.item-list li .icon { flex-shrink: 0; opacity: 0.7; }
+
+  .item-label {
+    font-weight: 600;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .item-context {
+    color: var(--text-muted);
+  }
+  .item-context a { color: var(--navy); }
+
+  details.collapsible summary {
+    padding: 12px 16px;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 13.5px;
+    color: var(--text);
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  details.collapsible summary::-webkit-details-marker { display: none; }
+  details.collapsible summary::after {
+    content: '+';
+    font-weight: 400;
+    color: var(--text-muted);
+  }
+  details.collapsible[open] summary::after { content: '–'; }
+  details.collapsible + details.collapsible,
+  section.group + details.collapsible,
+  details.collapsible + section.group {
+    margin-top: 12px;
+  }
+  details.collapsible {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  details.collapsible summary { border-bottom: 1px solid transparent; }
+  details.collapsible[open] summary { border-bottom-color: var(--border); }
+
+  details.collapsible.muted {
+    background: var(--bg);
+    border-color: var(--border);
+  }
+  details.collapsible.muted summary {
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+  details.collapsible.muted .item-label {
+    color: var(--text-muted);
+  }
+
+  .item-list-empty {
+    color: var(--text-muted);
+    font-size: 13.5px;
+    padding: 4px 2px 0;
+  }
+
+  .hvor-subheading {
+    padding: 12px 16px 6px;
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+  }
+  details.collapsible > div > .hvor-subheading:first-child {
+    padding-top: 4px;
+  }
+
+  .site-summary {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+  }
+
+  @media (max-width: 480px) {
+    .verdict-card { padding: 22px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="inner">
+    <div class="logo-mark">b</div>
+    <div>
+      <h1>Kvalitetstjek</h1>
+      <p>Tjek din side inden fakturering</p>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="search-card">
+    <input type="text" id="urlInput" placeholder="https://dinsite.kinsta.cloud/" autocomplete="off" aria-label="Domæne på det site der skal tjekkes">
+    <button id="checkBtn">Tjek hele siden</button>
+  </div>
+  <p class="demo-link"><a href="#" id="demoLink">Se et eksempel på resultatet →</a></p>
+
+  <div id="status"></div>
+  <div id="result"></div>
+</main>
+
+<script>
+/* ============================================================
+ * OPSÆTNING
+ * ============================================================ */
+
+// Sæt din Cloudflare Worker-URL ind her (uden ?url= i slutningen)
+var WORKER_URL = 'https://kvalitetstjek.DIT-SUBDOMÆNE.workers.dev';
+
+/* ============================================================
+ * TJEK-LOGIK (portet fra Feedback Bot / Kode.gs)
+ * ============================================================ */
+
+var STOCK_PATTERNS = [
+  { pattern: /88\s*88\s*88\s*88/g,    label: 'Stock-telefon: 88 88 88 88' },
+  { pattern: /\+4588888888/g,          label: 'Stock-telefon: +4588888888' },
+  { pattern: /firma@mail\.dk/gi,       label: 'Stock-email: firma@mail.dk' },
+  { pattern: /FIRMA-ADRESSE/g,         label: 'Stock-adresse: FIRMA-ADRESSE' },
+  { pattern: /FIRMA-PST-BY/g,          label: 'Stock-postby: FIRMA-PST-BY' },
+  { pattern: /FIRMA-CVR/g,             label: 'Stock-CVR: FIRMA-CVR' },
+  { pattern: /FIRMA-NAVN/g,            label: 'Stock-firmanavn: FIRMA-NAVN' },
+];
+
+var KNOWN_EXTERNAL_DOMAINS = [
+  'facebook.com', 'instagram.com', 'linkedin.com', 'twitter.com', 'x.com',
+  'youtube.com', 'tiktok.com', 'pinterest.com', 'snapchat.com',
+  'google.com', 'google.dk', 'maps.google.com', 'goo.gl',
+  'trustpilot.com', 'dk.trustpilot.com', 'calendly.com',
+  'kinsta.cloud', 'wordpress.org', 'gstatic.com', 'googleapis.com',
+];
+
+function getContextSnippet(html, index, radius) {
+  radius = radius || 45;
+  var start = Math.max(0, index - radius);
+  var end = Math.min(html.length, index + radius);
+  var raw = html.substring(start, end);
+  var text = raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return (start > 0 ? '…' : '') + text + (end < html.length ? '…' : '');
+}
+
+function checkBestOne(html) {
+  var regex = /\bBest One\b/gi;
+  var match;
+  var items = [];
+  while ((match = regex.exec(html)) !== null) {
+    items.push(getContextSnippet(html, match.index, 40));
+  }
+  return items;
+}
+
+function checkStockSiteTitle(html) {
+  var titleMatch = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+  if (!titleMatch) return false;
+  return /\bBest Stock\b/i.test(titleMatch[1]);
+}
+
+function extractH1Texts(html) {
+  var regex = /<h1\b[^>]*>([\s\S]*?)<\/h1>/gi;
+  var match;
+  var texts = [];
+  while ((match = regex.exec(html)) !== null) {
+    var text = match[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    texts.push(text || '(tom overskrift)');
+  }
+  return texts;
+}
+
+function checkDeadLinks(html) {
+  var socialKeywords = /facebook|instagram|linkedin|twitter|youtube|tiktok|pinterest|snapchat/i;
+
+  var cleaned = html.replace(/id=["']brx-header["'][\s\S]*?(?=id=["']brx-content["']|<main\b)/i, '');
+  cleaned = cleaned.replace(/<header\b[\s\S]*?<\/header>/gi, '');
+  cleaned = cleaned.replace(/<nav\b[\s\S]*?<\/nav>/gi, '');
+
+  var regex = /<a\b[^>]*>[\s\S]*?<\/a>/gi;
+  var match;
+  var count = 0;
+  var someCount = 0;
+  var items = [];
+
+  while ((match = regex.exec(cleaned)) !== null) {
+    var link = match[0];
+    var openTag = link.match(/<a\b[^>]*>/i)[0];
+    var hrefMatch = openTag.match(/href\s*=\s*["']([^"']*)["']/i);
+    var isDead = false;
+    if (!hrefMatch) {
+      isDead = true;
+    } else {
+      var href = hrefMatch[1].trim();
+      if (href === '' || /^#!?$/.test(href) || /^javascript:\s*(void\(0\))?;?\s*$/i.test(href)) {
+        isDead = true;
+      }
+    }
+    if (isDead) {
+      count++;
+      if (socialKeywords.test(link)) someCount++;
+      var linkText = link.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      items.push({
+        text: linkText || '(ingen synlig tekst - fx et ikon)',
+        context: getContextSnippet(cleaned, match.index, 45)
+      });
+    }
+  }
+  return { count: count, someCount: someCount, items: items };
+}
+
+function extractFrequentDomains(html, ownHostname, excludeDomains) {
+  var THRESHOLD = 3;
+  var excludeSet = {};
+  excludeDomains.forEach(function(d) { excludeSet[d] = true; });
+  excludeSet[ownHostname.replace(/^www\./i, '').toLowerCase()] = true;
+
+  var anchorTags = html.match(/<a\b[^>]*>/gi) || [];
+  var counts = {};
+
+  anchorTags.forEach(function(tag) {
+    var hrefMatch = tag.match(/href\s*=\s*["'](https?:\/\/[^"']+|\/\/[^"']+)["']/i);
+    if (!hrefMatch) return;
+    var domainMatch = hrefMatch[1].match(/^(?:https?:)?\/\/([^\/]+)/i);
+    if (!domainMatch) return;
+    var domain = domainMatch[1].replace(/^www\./i, '').toLowerCase();
+    if (excludeSet[domain]) return;
+    counts[domain] = (counts[domain] || 0) + 1;
+  });
+
+  return Object.keys(counts).filter(function(d) { return counts[d] >= THRESHOLD; });
+}
+
+function checkExternalLinksMissingBlank(html, ownDomains) {
+  var ownSet = {};
+  ownDomains.forEach(function(d) {
+    if (d) ownSet[d.replace(/^www\./i, '').toLowerCase()] = true;
+  });
+
+  var anchorTags = html.match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) || [];
+  var count = 0;
+  var domains = {};
+  var itemsByHref = {};
+
+  anchorTags.forEach(function(anchor) {
+    var openTag = anchor.match(/<a\b[^>]*>/i)[0];
+    var hrefMatch = openTag.match(/href\s*=\s*["'](https?:\/\/[^"']+|\/\/[^"']+)["']/i);
+    if (!hrefMatch) return;
+
+    var href = hrefMatch[1];
+    var domainMatch = href.match(/^(?:https?:)?\/\/([^\/]+)/i);
+    if (!domainMatch) return;
+
+    var linkDomain = domainMatch[1].replace(/^www\./i, '').toLowerCase();
+    if (ownSet[linkDomain]) return;
+
+    var hasBlank = /target\s*=\s*["']_blank["']/i.test(openTag);
+    if (hasBlank) return;
+
+    count++;
+    domains[linkDomain] = true;
+
+    if (!itemsByHref[href]) {
+      var text = anchor.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      itemsByHref[href] = {
+        href: href,
+        text: text || '(ingen synlig tekst - fx et ikon)',
+        domain: linkDomain
+      };
+    }
+  });
+
+  return {
+    count: count,
+    domains: Object.keys(domains),
+    items: Object.keys(itemsByHref).map(function(k) { return itemsByHref[k]; })
+  };
+}
+
+function extractPhoneNumbersWithContext(html) {
+  var regex = /tel:\+?45?(\d{8})/gi;
+  var match;
+  var seen = {};
+  var items = [];
+  while ((match = regex.exec(html)) !== null) {
+    var num = match[1];
+    if (num !== '88888888' && !seen[num]) {
+      seen[num] = true;
+      var formatted = num.replace(/(\d{2})(\d{2})(\d{2})(\d{2})/, '$1 $2 $3 $4');
+      items.push({ value: formatted, context: getContextSnippet(html, match.index, 40) });
+    }
+  }
+  return items;
+}
+
+function extractEmailsWithContext(html) {
+  var regex = /mailto:([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/gi;
+  var match;
+  var seen = {};
+  var items = [];
+  while ((match = regex.exec(html)) !== null) {
+    var email = match[1].toLowerCase();
+    if (email !== 'firma@mail.dk' && !seen[email]) {
+      seen[email] = true;
+      items.push({ value: email, context: getContextSnippet(html, match.index, 40) });
+    }
+  }
+  return items;
+}
+
+function extractCVRsWithContext(html) {
+  var regex = /CVR[:\s]*(\d{8})/gi;
+  var match;
+  var seen = {};
+  var items = [];
+  while ((match = regex.exec(html)) !== null) {
+    var cvr = match[1];
+    if (!seen[cvr]) {
+      seen[cvr] = true;
+      items.push({ value: cvr, context: getContextSnippet(html, match.index, 40) });
+    }
+  }
+  return items;
+}
+
+function extractPhoneNumbers(html) {
+  return extractPhoneNumbersWithContext(html).map(function(i) { return i.value; });
+}
+function extractEmails(html) {
+  return extractEmailsWithContext(html).map(function(i) { return i.value; });
+}
+function extractCVRs(html) {
+  return extractCVRsWithContext(html).map(function(i) { return i.value; });
+}
+
+function extractAddress(html) {
+  var footerMatch = html.match(/id=["']brx-footer["'][\s\S]*$/i);
+  if (!footerMatch) return null;
+  var footer = footerMatch[0];
+  var addrMatch = footer.match(/>\s*([\wæøåÆØÅ\s\-\.]+\s+\d+[^<]{0,30}\d{4}\s+[\wæøåÆØÅ\s]+)\s*</i);
+  if (addrMatch) return addrMatch[1].trim();
+  return null;
+}
+
+function checkEmptyImages(html) {
+  var imgs = html.match(/<img\b[^>]*>/gi) || [];
+  var items = [];
+  imgs.forEach(function(tag) {
+    var srcMatch = tag.match(/\bsrc\s*=\s*["']([^"']*)["']/i);
+    if (!srcMatch || srcMatch[1].trim() === '') {
+      var altMatch = tag.match(/\balt\s*=\s*["']([^"']*)["']/i);
+      var alt = altMatch ? altMatch[1].trim() : '';
+      items.push(alt || '(ingen alt-tekst)');
+    }
+  });
+  return items;
+}
+
+function runAllChecks(html, url) {
+  var errors = [];
+  var warnings = [];
+  var info = [];
+  var hostname = url.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+
+  STOCK_PATTERNS.forEach(function(check) {
+    check.pattern.lastIndex = 0;
+    var matches = html.match(check.pattern);
+    if (matches) errors.push(check.label + ' (' + matches.length + 'x)');
+  });
+
+  var bestOneItems = checkBestOne(html);
+  if (bestOneItems.length > 0) errors.push('"Best One" på kundens side (' + bestOneItems.length + 'x)');
+
+  var undersideMatches = html.match(/>\s*Underside\s*</gi);
+  if (undersideMatches) errors.push('"Underside" som nav-label (' + undersideMatches.length + 'x)');
+
+  var navnMatches = html.match(/>\s*Navn\s*</gi);
+  if (navnMatches && navnMatches.length >= 2) errors.push('"Navn" som anmeldernavn (' + navnMatches.length + 'x)');
+
+  var deadLinks = checkDeadLinks(html);
+  if (deadLinks.count > 0) {
+    var deadText = deadLinks.count + ' link(s) peger på # eller ingenting';
+    if (deadLinks.someCount > 0) deadText += ' (heraf ' + deadLinks.someCount + ' SoMe-links)';
+    errors.push(deadText);
+  }
+
+  var h1Texts = extractH1Texts(html);
+  var h1Count = h1Texts.length;
+  if (h1Count === 0) {
+    errors.push('Ingen H1-tag fundet');
+  } else if (h1Count > 1) {
+    errors.push(h1Count + ' H1-tags fundet (bør kun være 1): "' + h1Texts.join('", "') + '"');
+  }
+
+  if (checkStockSiteTitle(html)) {
+    errors.push('Site Titel er stadig "Best Stock" - ret i WP-admin under Indstillinger → Generelt → Webstedstitel');
+  }
+
+  var logoMatches = html.match(/[\/"']placeholder-logo(-\d+x\d+)?\.(png|jpe?g|svg|webp|gif)["']/gi);
+  if (logoMatches) warnings.push('Placeholder-logo i billedfil (' + logoMatches.length + 'x)');
+
+  var phones = extractPhoneNumbers(html);
+  var phonesWithContext = [];
+  if (phones.length > 1) {
+    warnings.push('Flere forskellige telefonnumre: ' + phones.join(', '));
+    phonesWithContext = extractPhoneNumbersWithContext(html);
+  }
+  if (phones.length > 0) info.push({ icon: '📞', label: 'Telefon', text: phones.join(', ') });
+
+  var emails = extractEmails(html);
+  var emailsWithContext = [];
+  if (emails.length > 1) {
+    warnings.push('Flere forskellige emails: ' + emails.join(', '));
+    emailsWithContext = extractEmailsWithContext(html);
+  }
+  if (emails.length > 0) info.push({ icon: '✉️', label: 'Email', text: emails.join(', ') });
+
+  var emailDomains = emails.map(function(e) { return e.split('@')[1]; });
+  var frequentDomains = extractFrequentDomains(html, hostname, KNOWN_EXTERNAL_DOMAINS.concat(emailDomains));
+  var ownDomains = [hostname].concat(emailDomains).concat(frequentDomains);
+  var externalLinks = checkExternalLinksMissingBlank(html, ownDomains);
+  if (externalLinks.count > 0) {
+    errors.push(externalLinks.count + ' eksterne link(s) åbner ikke i ny fane (' + externalLinks.domains.join(', ') + ')');
+  }
+
+  var address = extractAddress(html);
+  if (address) info.push({ icon: '📍', label: 'Adresse', text: address });
+
+  var cvrs = extractCVRs(html);
+  var cvrsWithContext = [];
+  if (cvrs.length > 1) {
+    warnings.push('Flere forskellige CVR-numre: ' + cvrs.join(', '));
+    cvrsWithContext = extractCVRsWithContext(html);
+  }
+  if (cvrs.length > 0) info.push({ icon: '🏢', label: 'CVR', text: cvrs.join(', ') });
+
+  var emptyImageAlts = checkEmptyImages(html);
+  if (emptyImageAlts.length > 0) errors.push(emptyImageAlts.length + ' billede(r) med tom eller manglende src');
+
+  return {
+    errors: errors,
+    warnings: warnings,
+    info: info,
+    externalLinkItems: externalLinks.items,
+    bestOneItems: bestOneItems,
+    deadLinkItems: deadLinks.items,
+    emptyImageAlts: emptyImageAlts,
+    phonesWithContext: phonesWithContext,
+    emailsWithContext: emailsWithContext,
+    cvrsWithContext: cvrsWithContext
+  };
+}
+
+/* ============================================================
+ * UI
+ * ============================================================ */
+
+var urlInput = document.getElementById('urlInput');
+var checkBtn = document.getElementById('checkBtn');
+var demoLink = document.getElementById('demoLink');
+var statusEl = document.getElementById('status');
+var resultEl = document.getElementById('result');
+
+/**
+ * Fiktiv HTML brugt af "Se et eksempel"-linket, så man kan se rapporten
+ * uden at Worker'en er sat op endnu. To fiktive sider: forsiden har en
+ * blanding af fejl/advarsler/OK-info, kontaktsiden er helt ren - så både
+ * en fejlende og en bestående side vises i listen.
+ */
+var DEMO_ORIGIN = 'https://eksempel-side.kinsta.cloud';
+var DEMO_HOME_HTML = [
+  '<html><head><title>Best Stock – Håndværker A/S</title></head><body>',
+  '<header id="brx-header"><nav><a href="#">Menu</a></nav></header>',
+  '<main id="brx-content">',
+  '<h1>Velkommen til Håndværker A/S</h1>',
+  '<h1>Vi klarer opgaven</h1>',
+  '<p>Ring på 88 88 88 88 eller skriv til firma@mail.dk</p>',
+  '<p>Kontakt os også på <a href="tel:+4520304050">20 30 40 50</a> eller',
+  '<a href="tel:+4520304099">20 30 40 99</a></p>',
+  '<a href="mailto:info@haandvaerker.dk">info@haandvaerker.dk</a>',
+  '<a href="mailto:salg@haandvaerker.dk">salg@haandvaerker.dk</a>',
+  '<p>CVR: 12345678</p>',
+  '<p>Vi er stolte af at være en del af Best One familien.</p>',
+  '<a href="#">Læs mere her</a>',
+  '<a href="https://www.trustpilot.com/review/haandvaerker.dk">Se anmeldelser</a>',
+  '<a href="https://www.instagram.com/haandvaerkerdk">Instagram</a>',
+  '<img src="/logo/placeholder-logo.png" alt="">',
+  '<img src="" alt="Tomt banner-billede">',
+  '</main>',
+  '<footer id="brx-footer"><p>Håndværker A/S – Erhvervsvej 12, 8000 Aarhus C</p></footer>',
+  '</body></html>'
+].join('\n');
+
+var DEMO_CONTACT_HTML = [
+  '<html><head><title>Kontakt – Håndværker A/S</title></head><body>',
+  '<header id="brx-header"><nav><a href="/">Forside</a></nav></header>',
+  '<main id="brx-content">',
+  '<h1>Kontakt os</h1>',
+  '<p>Ring på <a href="tel:+4520304050">20 30 40 50</a></p>',
+  '<a href="mailto:info@haandvaerker.dk">info@haandvaerker.dk</a>',
+  '<p>CVR: 12345678</p>',
+  '</main>',
+  '<footer id="brx-footer"><p>Håndværker A/S – Erhvervsvej 12, 8000 Aarhus C</p></footer>',
+  '</body></html>'
+].join('\n');
+
+demoLink.addEventListener('click', function(e) {
+  e.preventDefault();
+  urlInput.value = DEMO_ORIGIN;
+  setStatus('');
+  var pageResults = [
+    { url: DEMO_ORIGIN + '/', result: runAllChecks(DEMO_HOME_HTML, DEMO_ORIGIN + '/') },
+    { url: DEMO_ORIGIN + '/kontakt/', result: runAllChecks(DEMO_CONTACT_HTML, DEMO_ORIGIN + '/kontakt/') }
+  ];
+  buildSiteReport(pageResults, DEMO_ORIGIN);
+});
+
+function setStatus(text, isError, loading) {
+  statusEl.innerHTML = '';
+  statusEl.className = text ? 'visible' : '';
+  if (!text) return;
+  if (loading) {
+    statusEl.appendChild(el('div', { class: 'spinner' }));
+  }
+  statusEl.appendChild(el('span', { text: text, style: 'color:' + (isError ? 'var(--error)' : 'var(--text-muted)') }));
+}
+
+function el(tag, attrs, children) {
+  var node = document.createElement(tag);
+  if (attrs) {
+    Object.keys(attrs).forEach(function(key) {
+      if (key === 'html') node.innerHTML = attrs[key];
+      else if (key === 'text') node.textContent = attrs[key];
+      else node.setAttribute(key, attrs[key]);
+    });
+  }
+  (children || []).forEach(function(c) { if (c) node.appendChild(c); });
+  return node;
+}
+
+function normalizeUrl(raw) {
+  var value = raw.trim();
+  if (!value) return null;
+  if (!/^https?:\/\//i.test(value)) value = 'https://' + value;
+  return value;
+}
+
+function buildItemList(items, iconChar) {
+  var ul = el('ul', { class: 'item-list' });
+  items.forEach(function(item) {
+    var label = typeof item === 'string' ? null : (item.value || item.text || item.domain);
+    var context = typeof item === 'string' ? item : (item.context || item.text);
+    var li = el('li', {}, [
+      el('span', { class: 'icon', text: iconChar || '•' }),
+      el('span', {}, [
+        label ? el('span', { class: 'item-label', text: label }) : null,
+        el('span', { class: 'item-context', text: context || '' })
+      ])
+    ]);
+    ul.appendChild(li);
+  });
+  return ul;
+}
+
+function buildExternalLinksList(items) {
+  var ul = el('ul', { class: 'item-list' });
+  items.forEach(function(item) {
+    var li = el('li', {}, [
+      el('span', { class: 'icon', text: '↗' }),
+      el('span', {}, [
+        el('span', { class: 'item-label', text: item.domain }),
+        el('span', { class: 'item-context' }, [
+          el('a', { href: item.href, target: '_blank', rel: 'noopener', text: item.text })
+        ])
+      ])
+    ]);
+    ul.appendChild(li);
+  });
+  return ul;
+}
+
+function buildHvorDetails(container, groups) {
+  var wrapper = el('div', {});
+  groups.forEach(function(g) {
+    if (!g.items || g.items.length === 0) return;
+    wrapper.appendChild(el('div', { class: 'hvor-subheading', text: g.title + ' (' + g.items.length + ')' }));
+    wrapper.appendChild(g.external ? buildExternalLinksList(g.items) : buildItemList(g.items, g.icon));
+  });
+  if (!wrapper.childNodes.length) return;
+  container.appendChild(el('details', { class: 'collapsible' }, [
+    el('summary', { text: 'Se hvor' }),
+    wrapper
+  ]));
+}
+
+function errorHvorGroups(result) {
+  return [
+    { title: '"Best One" fundet', items: result.bestOneItems, icon: '📍' },
+    { title: 'Døde links', items: result.deadLinkItems, icon: '🔗' },
+    { title: 'Tomme billeder – alt-tekst', items: result.emptyImageAlts, icon: '🖼' },
+    { title: 'Eksterne links uden ny fane', items: result.externalLinkItems, icon: '↗', external: true }
+  ];
+}
+
+function warningHvorGroups(result) {
+  return [
+    { title: 'Telefonnumre', items: result.phonesWithContext, icon: '📞' },
+    { title: 'Emails', items: result.emailsWithContext, icon: '✉️' },
+    { title: 'CVR-numre', items: result.cvrsWithContext, icon: '🏢' }
+  ];
+}
+
+function pageLabel(path) {
+  return path === '/' ? 'Forside' : path;
+}
+
+/**
+ * Bygger ÉN kategori-boks (Fejl eller Advarsler): overskrift med samlet
+ * antal, og indeni ét underafsnit pr. URL der rent faktisk har noget i
+ * denne kategori - med sidenavn som mellemrubrik (+ lille link til
+ * URL'en), listen af fund, og en "Se hvor"-detalje for netop den side.
+ * Sider uden noget i denne kategori vises slet ikke.
+ */
+function buildCategoryBox(container, opts) {
+  var pages = opts.pages.filter(function(p) { return p.messages.length > 0; });
+  if (pages.length === 0) return;
+
+  var totalCount = pages.reduce(function(sum, p) { return sum + p.messages.length; }, 0);
+
+  var body = el('div', { class: 'group-body' });
+  pages.forEach(function(p) {
+    var block = el('div', { class: 'page-block' });
+    block.appendChild(el('div', { class: 'page-block-url' }, [
+      el('span', { class: 'page-block-name', text: pageLabel(p.path) }),
+      el('a', { href: p.url, target: '_blank', rel: 'noopener', class: 'page-block-link', text: '↗' })
+    ]));
+
+    var ul = el('ul', { class: 'item-list' });
+    p.messages.forEach(function(msg) {
+      ul.appendChild(el('li', {}, [
+        el('span', { class: 'icon', text: opts.icon }),
+        el('span', { text: msg })
+      ]));
+    });
+    block.appendChild(ul);
+
+    buildHvorDetails(block, p.hvorGroups);
+    body.appendChild(block);
+  });
+
+  container.appendChild(el('section', { class: 'group ' + opts.className }, [
+    el('div', { class: 'group-title', text: opts.title + ' (' + totalCount + ')' }),
+    body
+  ]));
+}
+
+/**
+ * Bygger den samlede rapport for HELE sitet: én boks for Fejl og én for
+ * Advarsler, hver grupperet efter URL. Sider der er bestået OG ikke har
+ * nogen fund (hverken fejl eller advarsler) vises slet ikke - de er der
+ * ikke noget at se på dem. Til sidst en samlet Bestået/Dumpet-verdict.
+ */
+function buildSiteReport(pageResults, originUrl) {
+  var hostname = originUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  resultEl.innerHTML = '';
+
+  var headerRow = el('div', { class: 'report-header' }, [
+    el('span', { class: 'hostname', text: hostname }),
+    el('a', { href: originUrl, target: '_blank', rel: 'noopener', text: 'Åbn siden ↗' })
+  ]);
+  resultEl.appendChild(headerRow);
+
+  function pathOf(url) {
+    return url.replace(/^https?:\/\/[^\/]+/, '') || '/';
+  }
+
+  var okPages = pageResults.filter(function(p) { return p.result && p.result.errors.length === 0 && p.result.warnings.length === 0; });
+  var errorCount = pageResults.filter(function(p) { return p.result && p.result.errors.length > 0; }).length;
+  var warningCount = pageResults.filter(function(p) { return p.result && p.result.warnings.length > 0; }).length;
+  var fetchErrorPages = pageResults.filter(function(p) { return !p.result; });
+
+  var summaryText = pageResults.length + ' side(r) tjekket';
+  if (okPages.length > 0) summaryText += ' – ' + okPages.length + ' bestået uden fund (vises ikke)';
+  resultEl.appendChild(el('div', { class: 'site-summary', text: summaryText }));
+
+  buildCategoryBox(resultEl, {
+    className: 'errors',
+    title: 'Fejl',
+    icon: '✕',
+    pages: pageResults.filter(function(p) { return p.result; }).map(function(p) {
+      return { path: pathOf(p.url), url: p.url, messages: p.result.errors, hvorGroups: errorHvorGroups(p.result) };
+    })
+  });
+
+  buildCategoryBox(resultEl, {
+    className: 'warnings',
+    title: 'Advarsler',
+    icon: '!',
+    pages: pageResults.filter(function(p) { return p.result; }).map(function(p) {
+      return { path: pathOf(p.url), url: p.url, messages: p.result.warnings, hvorGroups: warningHvorGroups(p.result) };
+    })
+  });
+
+  if (fetchErrorPages.length > 0) {
+    var fetchUl = el('ul', { class: 'item-list' });
+    fetchErrorPages.forEach(function(p) {
+      fetchUl.appendChild(el('li', {}, [
+        el('span', { class: 'icon', text: '⚠️' }),
+        el('span', {}, [
+          el('span', { class: 'item-label' }, [
+            document.createTextNode(pageLabel(pathOf(p.url)) + ' '),
+            el('a', { href: p.url, target: '_blank', rel: 'noopener', class: 'page-block-link', text: '↗' })
+          ]),
+          el('span', { class: 'item-context', text: p.error || 'Ukendt fejl' })
+        ])
+      ]));
+    });
+    resultEl.appendChild(el('details', { class: 'collapsible muted' }, [
+      el('summary', { text: 'Kunne ikke hentes (' + fetchErrorPages.length + ')' }),
+      fetchUl
+    ]));
+  }
+
+  if (errorCount === 0 && warningCount === 0 && fetchErrorPages.length === 0) {
+    resultEl.appendChild(el('div', { class: 'item-list-empty', text: 'Ingen fejl eller advarsler fundet på nogen sider.' }));
+  }
+
+  var siteHasErrors = errorCount > 0;
+  var verdictClass = siteHasErrors ? 'fail' : 'pass';
+  var verdictTitle = siteHasErrors ? '❌ Dumpet' : '✅ Bestået';
+  var verdictSub = siteHasErrors
+    ? errorCount + ' side(r) har fejl – ret dem og tjek igen.'
+    : null;
+
+  resultEl.appendChild(el('div', { class: 'verdict-card ' + verdictClass }, [
+    el('div', { class: 'verdict-title', text: verdictTitle }),
+    verdictSub ? el('div', { class: 'verdict-sub', text: verdictSub }) : null
+  ]));
+}
+
+
+/* ============================================================
+ * SITEMAP-DISCOVERY + FLERE SIDER
+ * ============================================================ */
+
+var MAX_PAGES = 150;
+var CONCURRENCY = 4;
+var ASSET_EXTENSION_RE = /\.(jpg|jpeg|png|gif|webp|svg|avif|pdf|zip|xml|css|js|ico|woff2?|ttf|mp4|mp3|json)(\?|$)/i;
+
+async function fetchViaWorker(url) {
+  try {
+    var res = await fetch(WORKER_URL + '?url=' + encodeURIComponent(url));
+    var data = await res.json();
+    if (!data.ok) return { ok: false, error: data.error || 'Ukendt fejl' };
+    return { ok: true, html: data.html, finalUrl: data.finalUrl || url };
+  } catch (e) {
+    return { ok: false, error: 'Kunne ikke kontakte proxy-workeren: ' + e.message };
+  }
+}
+
+function parseXml(text) {
+  try {
+    var xml = new DOMParser().parseFromString(text, 'application/xml');
+    if (xml.getElementsByTagName('parsererror').length > 0) return null;
+    return xml;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Finder alle side-URL'er på sitet via sitemap.xml (og evt. indlejrede
+ * sitemaps, fx Yoasts sitemap_index.xml -> page-sitemap.xml osv.).
+ * Prøver robots.txt først (den mest pålidelige kilde), falder ellers
+ * tilbage til gængse standardstier.
+ */
+async function discoverSitemapUrls(originUrl, onProgress) {
+  var candidates = [];
+
+  onProgress('Læser robots.txt …');
+  var robots = await fetchViaWorker(originUrl + '/robots.txt');
+  if (robots.ok) {
+    robots.html.split(/\r?\n/).forEach(function(line) {
+      var m = line.match(/^\s*Sitemap:\s*(\S+)/i);
+      if (m) candidates.push(m[1]);
+    });
+  }
+  if (candidates.length === 0) {
+    candidates = [
+      originUrl + '/sitemap_index.xml',
+      originUrl + '/sitemap.xml',
+      originUrl + '/wp-sitemap.xml'
+    ];
+  }
+
+  var originHost = new URL(originUrl).host;
+  var pageUrls = [];
+  var seenPages = {};
+  var toProcess = candidates.slice();
+  var processed = {};
+  var iterations = 0;
+
+  while (toProcess.length > 0 && iterations < 30) {
+    iterations++;
+    var current = toProcess.shift();
+    if (processed[current]) continue;
+    processed[current] = true;
+
+    onProgress('Læser sitemap: ' + current.replace(/^https?:\/\//, '') + ' …');
+    var res = await fetchViaWorker(current);
+    if (!res.ok) continue;
+
+    var xml = parseXml(res.html);
+    if (!xml) continue;
+
+    var sitemapNodes = xml.getElementsByTagName('sitemap');
+    for (var i = 0; i < sitemapNodes.length; i++) {
+      var locNode = sitemapNodes[i].getElementsByTagName('loc')[0];
+      if (locNode) {
+        var loc = locNode.textContent.trim();
+        if (loc && !processed[loc]) toProcess.push(loc);
+      }
+    }
+
+    var urlNodes = xml.getElementsByTagName('url');
+    for (var j = 0; j < urlNodes.length; j++) {
+      var uLocNode = urlNodes[j].getElementsByTagName('loc')[0];
+      if (!uLocNode) continue;
+      var pageUrl = uLocNode.textContent.trim();
+      if (!pageUrl || seenPages[pageUrl]) continue;
+      if (ASSET_EXTENSION_RE.test(pageUrl)) continue;
+      try {
+        if (new URL(pageUrl).host !== originHost) continue;
+      } catch (e) { continue; }
+      seenPages[pageUrl] = true;
+      pageUrls.push(pageUrl);
+    }
+  }
+
+  return pageUrls;
+}
+
+async function checkAllPages(urls, onProgress) {
+  var results = new Array(urls.length);
+  var nextIndex = 0;
+  var done = 0;
+
+  async function worker() {
+    while (nextIndex < urls.length) {
+      var i = nextIndex++;
+      var url = urls[i];
+      var res = await fetchViaWorker(url);
+      done++;
+      onProgress(done, urls.length);
+      if (!res.ok) {
+        results[i] = { url: url, error: res.error };
+      } else {
+        results[i] = { url: res.finalUrl || url, result: runAllChecks(res.html, res.finalUrl || url) };
+      }
+    }
+  }
+
+  var workers = [];
+  for (var w = 0; w < CONCURRENCY; w++) workers.push(worker());
+  await Promise.all(workers);
+  return results;
+}
+
+async function runCheck() {
+  var raw = urlInput.value.trim();
+  if (!raw) {
+    setStatus('Indsæt domænet på det site du vil tjekke.', true);
+    return;
+  }
+  if (!WORKER_URL || WORKER_URL.indexOf('DIT-SUBDOMÆNE') !== -1) {
+    setStatus('WORKER_URL er ikke sat op endnu i index.html.', true);
+    return;
+  }
+
+  var normalized = normalizeUrl(raw);
+  var originUrl;
+  try {
+    var u = new URL(normalized);
+    originUrl = u.protocol + '//' + u.host;
+  } catch (e) {
+    setStatus('Ugyldig URL.', true);
+    return;
+  }
+
+  checkBtn.disabled = true;
+  resultEl.innerHTML = '';
+  setStatus('Finder sitemap …', false, true);
+
+  var pageUrls = await discoverSitemapUrls(originUrl, function(msg) {
+    setStatus(msg, false, true);
+  });
+
+  if (pageUrls.length === 0) {
+    pageUrls = [normalized];
+    setStatus('Intet sitemap fundet – tjekker kun den indtastede side …', false, true);
+  }
+
+  var capped = pageUrls.length > MAX_PAGES;
+  if (capped) pageUrls = pageUrls.slice(0, MAX_PAGES);
+
+  var pageResults = await checkAllPages(pageUrls, function(done, total) {
+    setStatus('Tjekker side ' + done + ' af ' + total + ' …', false, true);
+  });
+
+  setStatus(capped ? 'Sitet har flere end ' + MAX_PAGES + ' sider – kun de første ' + MAX_PAGES + ' blev tjekket.' : '', capped);
+  buildSiteReport(pageResults, originUrl);
+  checkBtn.disabled = false;
+}
+
+checkBtn.addEventListener('click', runCheck);
+urlInput.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') runCheck();
+});
+</script>
+
+</body>
+</html>
