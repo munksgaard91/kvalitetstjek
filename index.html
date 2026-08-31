@@ -1002,8 +1002,14 @@ function annotateWithPage(item, label, isExternal) {
     return { pageLabel: label, context: item };
   }
   var extra = item.value || item.text;
+  if (item.raw) {
+    // Vi har den præcise kildekode at vise ("Vis kildekode") - dropper
+    // derfor tekst-udsnittet fra siden, som kan virke forvirrende hvis
+    // det tilfældigvis er skåret midt i et HTML-tag.
+    return { pageLabel: label, context: extra || '', raw: item.raw };
+  }
   var context = item.context || '';
-  return { pageLabel: label, context: extra ? (extra + (context ? ' — ' + context : '')) : context, raw: item.raw };
+  return { pageLabel: label, context: extra ? (extra + (context ? ' — ' + context : '')) : context };
 }
 
 /**
