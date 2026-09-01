@@ -169,6 +169,25 @@
   }
   .report-header a:hover { text-decoration: underline; }
 
+  .report-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .share-link-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--navy);
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .share-link-btn:hover { text-decoration: underline; }
+
   .verdict-card {
     border-radius: 12px;
     padding: 26px 22px;
@@ -1102,9 +1121,26 @@ function buildSiteReport(pageResults, originUrl) {
   var hostname = originUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
   resultEl.innerHTML = '';
 
+  var shareBtn = el('button', { type: 'button', class: 'share-link-btn', text: '🔗 Kopiér link' });
+  shareBtn.addEventListener('click', function() {
+    var shareUrl = location.origin + location.pathname + '?url=' + encodeURIComponent(originUrl);
+    var done = function() {
+      shareBtn.textContent = '✓ Link kopieret';
+      setTimeout(function() { shareBtn.textContent = '🔗 Kopiér link'; }, 2000);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(shareUrl).then(done, function() { window.prompt('Kopiér linket:', shareUrl); });
+    } else {
+      window.prompt('Kopiér linket:', shareUrl);
+    }
+  });
+
   var headerRow = el('div', { class: 'report-header' }, [
     el('span', { class: 'hostname', text: hostname }),
-    el('a', { href: originUrl, target: '_blank', rel: 'noopener', text: 'Åbn siden ↗' })
+    el('div', { class: 'report-header-actions' }, [
+      shareBtn,
+      el('a', { href: originUrl, target: '_blank', rel: 'noopener', text: 'Åbn siden ↗' })
+    ])
   ]);
   resultEl.appendChild(headerRow);
 
@@ -1560,6 +1596,21 @@ checkBtn.addEventListener('click', runCheck);
 urlInput.addEventListener('keydown', function(e) {
   if (e.key === 'Enter') runCheck();
 });
+
+/**
+ * Deleling: hvis siden åbnes med fx ?url=https://vsj.dk/, udfyldes
+ * feltet automatisk og tjekket køres med det samme - så et kort,
+ * genkendeligt link (bare med sitets egen URL i) kan sendes videre og
+ * genkører tjekket live for modtageren.
+ */
+(function autoRunFromShareLink() {
+  var params = new URLSearchParams(window.location.search);
+  var sharedUrl = params.get('url');
+  if (sharedUrl) {
+    urlInput.value = sharedUrl;
+    runCheck();
+  }
+})();
 </script>
 
 </body>
