@@ -46,29 +46,29 @@
   }
 
   .logo-mark {
-    width: 44px;
-    height: 44px;
-    border-radius: 10px;
+    width: 56px;
+    height: 56px;
+    border-radius: 12px;
     background: var(--navy);
     color: white;
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: 700;
-    font-size: 22px;
+    font-size: 28px;
     flex-shrink: 0;
   }
 
   header h1 {
     margin: 0;
-    font-size: 22px;
-    font-weight: 700;
+    font-size: 38px;
+    font-weight: 800;
     color: var(--text);
   }
 
   header p {
     margin: 0;
-    font-size: 14px;
+    font-size: 15px;
     color: var(--text-muted);
   }
 
@@ -228,8 +228,59 @@
   .verdict-card.unknown .verdict-title { color: var(--warn); }
   .verdict-card.unknown .verdict-sub { color: var(--text); }
 
-  .group.errors > .group-title { color: var(--error); }
-  .group.warnings > .group-title { color: var(--warn); }
+  .toggle-switch {
+    display: flex;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+
+  .toggle-option {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 11px 16px;
+    border-radius: 999px;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .toggle-option .toggle-count {
+    font-size: 12px;
+    font-weight: 700;
+    opacity: 0.6;
+  }
+
+  .toggle-option.active {
+    background: var(--card);
+    box-shadow: 0 1px 3px rgba(20,40,60,0.1);
+  }
+
+  .toggle-option[data-tab="errors"].active { color: var(--error); }
+  .toggle-option[data-tab="warnings"].active { color: var(--warn); }
+
+  .toggle-content {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+
+  .toggle-content > .item-list-empty {
+    padding: 16px;
+  }
 
   .page-block {
     border-bottom: 1px solid var(--border);
@@ -1057,17 +1108,20 @@ function mergeHvorGroups(pages, hvorGroupsFn) {
 }
 
 /**
- * Bygger ÉN kategori-boks (Fejl eller Advarsler): overskrift med samlet
- * antal. Sider der har PRÆCIS de samme fejl/advarsler slås sammen i én
- * blok med sidenavnene delt af komma, og "Se hvor" viser hvilken af de
- * sammenlagte sider hvert fund kommer fra. Sider uden noget i denne
- * kategori vises slet ikke.
+ * Bygger indholdet for ÉN kategori (Fejl eller Advarsler) ind i en
+ * container. Sider der har PRÆCIS de samme fejl/advarsler slås sammen i
+ * én blok med sidenavnene delt af komma, og "Se hvor" viser hvilken af
+ * de sammenlagte sider hvert fund kommer fra. Er der intet i kategorien,
+ * vises en simpel "ingen fund"-besked i stedet.
  */
-function buildCategoryBox(container, opts) {
+function buildCategoryContent(container, opts) {
+  container.innerHTML = '';
   var candidates = opts.pages.filter(function(p) { return p.result[opts.messagesKey].length > 0; });
-  if (candidates.length === 0) return;
 
-  var totalCount = candidates.reduce(function(sum, p) { return sum + p.result[opts.messagesKey].length; }, 0);
+  if (candidates.length === 0) {
+    container.appendChild(el('div', { class: 'item-list-empty', text: opts.emptyText }));
+    return;
+  }
 
   var groups = [];
   var keyToGroup = {};
@@ -1081,7 +1135,6 @@ function buildCategoryBox(container, opts) {
     keyToGroup[key].pages.push(p);
   });
 
-  var body = el('div', { class: 'group-body' });
   groups.forEach(function(g) {
     var block = el('div', { class: 'page-block' });
 
@@ -1102,13 +1155,54 @@ function buildCategoryBox(container, opts) {
     block.appendChild(ul);
 
     buildHvorDetails(block, mergeHvorGroups(g.pages, opts.hvorGroupsFn));
-    body.appendChild(block);
+    container.appendChild(block);
   });
+}
 
-  container.appendChild(el('details', { class: 'collapsible group ' + opts.className }, [
-    el('summary', { class: 'group-title', text: opts.title + ' (' + totalCount + ')' }),
-    body
-  ]));
+/**
+ * Bygger toggle'en mellem Fejl og Advarsler - kun én kategori vises ad
+ * gangen. Antallet vises altid, også når det er 0.
+ */
+function buildFejlAdvarslerToggle(container, pages) {
+  var totalErrors = pages.reduce(function(sum, p) { return sum + p.result.errors.length; }, 0);
+  var totalWarnings = pages.reduce(function(sum, p) { return sum + p.result.warnings.length; }, 0);
+
+  var errBtn = el('button', { type: 'button', class: 'toggle-option', 'data-tab': 'errors' }, [
+    el('span', { class: 'toggle-label', text: 'Fejl' }),
+    el('span', { class: 'toggle-count', text: String(totalErrors) })
+  ]);
+  var warnBtn = el('button', { type: 'button', class: 'toggle-option', 'data-tab': 'warnings' }, [
+    el('span', { class: 'toggle-label', text: 'Advarsler' }),
+    el('span', { class: 'toggle-count', text: String(totalWarnings) })
+  ]);
+
+  var toggleSwitch = el('div', { class: 'toggle-switch' }, [errBtn, warnBtn]);
+  var content = el('div', { class: 'toggle-content' });
+  container.appendChild(toggleSwitch);
+  container.appendChild(content);
+
+  function selectTab(tab) {
+    errBtn.classList.toggle('active', tab === 'errors');
+    warnBtn.classList.toggle('active', tab === 'warnings');
+    if (tab === 'errors') {
+      buildCategoryContent(content, {
+        className: 'errors', icon: '✕', messagesKey: 'errors',
+        hvorGroupsFn: errorHvorGroups, pages: pages,
+        emptyText: 'Ingen fejl fundet på nogen sider.'
+      });
+    } else {
+      buildCategoryContent(content, {
+        className: 'warnings', icon: '!', messagesKey: 'warnings',
+        hvorGroupsFn: warningHvorGroups, pages: pages,
+        emptyText: 'Ingen advarsler fundet på nogen sider.'
+      });
+    }
+  }
+
+  errBtn.addEventListener('click', function() { selectTab('errors'); });
+  warnBtn.addEventListener('click', function() { selectTab('warnings'); });
+
+  selectTab(totalErrors > 0 ? 'errors' : 'warnings');
 }
 
 /**
@@ -1163,27 +1257,9 @@ function buildSiteReport(pageResults, originUrl) {
     ]));
   }
 
-  buildCategoryBox(resultEl, {
-    className: 'errors',
-    title: 'Fejl',
-    icon: '✕',
-    messagesKey: 'errors',
-    hvorGroupsFn: errorHvorGroups,
-    pages: pageResults.filter(function(p) { return p.result; }).map(function(p) {
-      return { path: pathOf(p.url), url: p.url, result: p.result };
-    })
-  });
-
-  buildCategoryBox(resultEl, {
-    className: 'warnings',
-    title: 'Advarsler',
-    icon: '!',
-    messagesKey: 'warnings',
-    hvorGroupsFn: warningHvorGroups,
-    pages: pageResults.filter(function(p) { return p.result; }).map(function(p) {
-      return { path: pathOf(p.url), url: p.url, result: p.result };
-    })
-  });
+  buildFejlAdvarslerToggle(resultEl, pageResults.filter(function(p) { return p.result; }).map(function(p) {
+    return { path: pathOf(p.url), url: p.url, result: p.result };
+  }));
 
   if (fetchErrorPages.length > 0) {
     var fetchUl = el('ul', { class: 'item-list' });
