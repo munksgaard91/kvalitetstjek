@@ -506,6 +506,8 @@ var STOCK_PATTERNS = [
   { pattern: /FIRMA-PST-BY/g,          label: 'Stock-postby: FIRMA-PST-BY' },
   { pattern: /FIRMA-CVR/g,             label: 'Stock-CVR: FIRMA-CVR' },
   { pattern: /FIRMA-NAVN/g,            label: 'Stock-firmanavn: FIRMA-NAVN' },
+  { pattern: /Lorem ipsum/gi,          label: 'Stock-tekst: Lorem ipsum' },
+  { pattern: /\bFornavn\s+Efternavn\b/gi, label: 'Stock-anmeldernavn: Fornavn Efternavn' },
 ];
 
 var KNOWN_EXTERNAL_DOMAINS = [
@@ -818,6 +820,14 @@ function runAllChecks(html, url) {
   var CONTACT_PATH_ALIASES = ['/kontakt', '/contact'];
   var skipH1Check = CONTACT_PATH_ALIASES.indexOf(pagePathNoLang) !== -1;
 
+  // Cookie-siden er som regel standard-boilerplate fra et cookie-plugin
+  // (fx Cookiebot) - "Navn" som anmeldernavn, manglende H1 og eksterne
+  // links uden ny fane (til fx minecookies.org/datatilsynet.dk) er alt
+  // sammen forventet der og skal ikke tælle som fejl.
+  var COOKIES_PATH_ALIASES = ['/cookies', '/cookie-policy'];
+  var skipCookiesChecks = COOKIES_PATH_ALIASES.indexOf(pagePathNoLang) !== -1;
+  if (skipCookiesChecks) skipH1Check = true;
+
   // "Flere telefonnumre/emails"-advarslen giver ikke mening på sider der
   // bevidst lister flere medarbejderes direkte kontaktoplysninger (fx et
   // team-oversigt) - udvid listen hvis I støder på flere lignende sider.
@@ -845,7 +855,10 @@ function runAllChecks(html, url) {
   if (undersideMatches) errors.push('"Underside" som nav-label (' + undersideMatches.length + 'x)');
 
   var navnMatches = cleanHtml.match(/>\s*Navn\s*</gi);
-  if (navnMatches && navnMatches.length >= 2) errors.push('"Navn" som anmeldernavn (' + navnMatches.length + 'x)');
+  if (navnMatches && navnMatches.length >= 2 && !skipCookiesChecks) errors.push('"Navn" som anmeldernavn (' + navnMatches.length + 'x)');
+
+  var virksomhedMatches = cleanHtml.match(/>\s*Virksomhed\s*</gi);
+  if (virksomhedMatches && virksomhedMatches.length >= 2) errors.push('"Virksomhed" som stock-firmanavn (' + virksomhedMatches.length + 'x)');
 
   var deadLinks = checkDeadLinks(cleanHtml);
   if (deadLinks.count > 0) {
@@ -888,11 +901,14 @@ function runAllChecks(html, url) {
   if (emails.length > 0) info.push({ icon: '✉️', label: 'Email', text: emails.join(', ') });
 
   var emailDomains = emails.map(function(e) { return e.split('@')[1]; });
-  var frequentDomains = extractFrequentDomains(cleanHtml, hostname, KNOWN_EXTERNAL_DOMAINS.concat(emailDomains));
-  var ownDomains = [hostname].concat(emailDomains).concat(frequentDomains);
-  var externalLinks = checkExternalLinksMissingBlank(cleanHtml, ownDomains);
-  if (externalLinks.count > 0) {
-    errors.push(externalLinks.count + ' eksterne link(s) åbner ikke i ny fane (' + externalLinks.domains.join(', ') + ')');
+  var externalLinks = { count: 0, domains: [], items: [] };
+  if (!skipCookiesChecks) {
+    var frequentDomains = extractFrequentDomains(cleanHtml, hostname, KNOWN_EXTERNAL_DOMAINS.concat(emailDomains));
+    var ownDomains = [hostname].concat(emailDomains).concat(frequentDomains);
+    externalLinks = checkExternalLinksMissingBlank(cleanHtml, ownDomains);
+    if (externalLinks.count > 0) {
+      errors.push(externalLinks.count + ' eksterne link(s) åbner ikke i ny fane (' + externalLinks.domains.join(', ') + ')');
+    }
   }
 
   var address = extractAddress(cleanHtml);
@@ -1362,12 +1378,16 @@ function stripLanguagePrefix(pathname) {
  * "/viden/et-emne" skal stadig tjekkes.
  * PREFIX: stien OG alle undersider derunder ekskluderes - fx
  * "/forfatter" og "/forfatter/mikael-vukicevic/".
- * Begge lister indeholder også engelske/tyske oversættelser, og tjekkes
- * efter et evt. sprogpræfiks er fjernet (fx "/en/author/..." matcher
- * "/author").
+ * SLUG_PREFIX: ethvert sti-segment der STARTER MED en af disse tekster
+ * ekskluderes - bruges til generiske kvitterings-/tak-sider hvor der
+ * ikke er ét fast sidenavn, men en masse varianter som
+ * "tak-for-din-tilmelding-nyhedsbrev", "tak-for-din-bestilling" osv.
+ * Alle lister tjekkes efter et evt. sprogpræfiks er fjernet (fx
+ * "/en/author/..." matcher "/author").
  */
 var EXCLUDED_EXACT_PATHS = ['/viden', '/knowledge', '/cookies'];
 var EXCLUDED_PATH_PREFIXES = ['/forfatter', '/author', '/autor'];
+var EXCLUDED_SLUG_PREFIXES = ['tak-for', 'thank-you', 'thanks-for'];
 
 function isExcludedPath(pathname) {
   var normalized = stripLanguagePrefix(pathname).replace(/\/+$/, '');
@@ -1378,6 +1398,13 @@ function isExcludedPath(pathname) {
   for (var i = 0; i < EXCLUDED_PATH_PREFIXES.length; i++) {
     var prefix = EXCLUDED_PATH_PREFIXES[i];
     if (normalized === prefix || normalized.indexOf(prefix + '/') === 0) return true;
+  }
+
+  var segments = normalized.split('/');
+  for (var s = 0; s < segments.length; s++) {
+    for (var j = 0; j < EXCLUDED_SLUG_PREFIXES.length; j++) {
+      if (segments[s].indexOf(EXCLUDED_SLUG_PREFIXES[j]) === 0) return true;
+    }
   }
 
   return false;
