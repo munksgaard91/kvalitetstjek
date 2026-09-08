@@ -498,6 +498,14 @@ var WORKER_URL = 'https://kvalitetstjek.rmu-5d1.workers.dev';
  * TJEK-LOGIK (portet fra Feedback Bot / Kode.gs)
  * ============================================================ */
 
+/**
+ * Mindste antal tegn tekst der forventes i selve indholdsområdet, før
+ * en side IKKE regnes som "tom". Sat lavt bevidst - det skal kun fange
+ * sider der reelt mangler indhold (kun en overskrift), ikke bare korte
+ * sider. Juster op/ned hvis den fanger for meget/for lidt i praksis.
+ */
+var MIN_CONTENT_LENGTH = 100;
+
 var STOCK_PATTERNS = [
   { pattern: /88\s*88\s*88\s*88/g,    label: 'Stock-telefon: 88 88 88 88' },
   { pattern: /\+4588888888/g,          label: 'Stock-telefon: +4588888888' },
@@ -790,6 +798,24 @@ function extractAddress(html) {
   return null;
 }
 
+/**
+ * Trækker den rene tekst ud af selve INDHOLDSOMRÅDET (mellem
+ * header/nav og footer) - bruges til at opdage sider der reelt er
+ * "tomme" (kun en overskrift, ingen brødtekst). Header, nav og footer
+ * er bevidst udeladt, da de er de samme boilerplate-elementer på hver
+ * eneste side og ikke siger noget om DENNE sides indhold.
+ */
+function extractMainContentText(html) {
+  var region = html;
+  var contentStart = html.search(/id=["']brx-content["']/i);
+  if (contentStart !== -1) {
+    region = html.slice(contentStart);
+    var footerStart = region.search(/id=["']brx-footer["']/i);
+    if (footerStart !== -1) region = region.slice(0, footerStart);
+  }
+  return region.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 function checkEmptyImages(html) {
   var imgs = html.match(/<img\b[^>]*>/gi) || [];
   var items = [];
@@ -924,6 +950,17 @@ function runAllChecks(html, url) {
 
   var emptyImageAlts = checkEmptyImages(cleanHtml);
   if (emptyImageAlts.length > 0) errors.push(emptyImageAlts.length + ' billede(r) med tom eller manglende src');
+
+  // Fanger sider der reelt er "tomme" - kun en overskrift og ellers
+  // ingen brødtekst i selve indholdsområdet. Springes over på
+  // kontakt-/cookie-sider, som strukturelt ofte har meget lidt statisk
+  // tekst (formular hhv. et JS-indsat cookie-widget).
+  if (!skipH1Check && !skipCookiesChecks) {
+    var mainContentText = extractMainContentText(cleanHtml);
+    if (mainContentText.length < MIN_CONTENT_LENGTH) {
+      errors.push('Siden har næsten intet indhold (kun ' + mainContentText.length + ' tegn tekst) - tjek om siden mangler brødtekst');
+    }
+  }
 
   return {
     errors: errors,
