@@ -799,21 +799,21 @@ function extractAddress(html) {
 }
 
 /**
- * Trækker den rene tekst ud af selve INDHOLDSOMRÅDET (mellem
- * header/nav og footer) - bruges til at opdage sider der reelt er
- * "tomme" (kun en overskrift, ingen brødtekst). Header, nav og footer
- * er bevidst udeladt, da de er de samme boilerplate-elementer på hver
- * eneste side og ikke siger noget om DENNE sides indhold.
+ * Trækker KUN den tekst ud der står i egentlige <p>-tags (rigtig
+ * brødtekst) - bruges til at opdage sider der reelt er "tomme" (kun en
+ * overskrift, ingen brødtekst). Overskrifter, tabeller og lister (fx en
+ * åbningstider-widget eller kontaktinfo i footeren) tæller bevidst
+ * ikke med, selvom de indeholder en del tekst - de er boilerplate der
+ * gentages på alle sider og siger intet om DENNE sides indhold. Header,
+ * nav og footer fjernes helt først, så en evt. "om os"-tekst i footeren
+ * (som findes på alle sider) heller ikke tæller med.
  */
-function extractMainContentText(html) {
-  var region = html;
-  var contentStart = html.search(/id=["']brx-content["']/i);
-  if (contentStart !== -1) {
-    region = html.slice(contentStart);
-    var footerStart = region.search(/id=["']brx-footer["']/i);
-    if (footerStart !== -1) region = region.slice(0, footerStart);
-  }
-  return region.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+function extractParagraphText(html) {
+  var cleaned = html.replace(/<header\b[\s\S]*?<\/header>/gi, '');
+  cleaned = cleaned.replace(/<nav\b[\s\S]*?<\/nav>/gi, '');
+  cleaned = cleaned.replace(/<footer\b[\s\S]*?<\/footer>/gi, '');
+  var paragraphs = cleaned.match(/<p\b[^>]*>[\s\S]*?<\/p>/gi) || [];
+  return paragraphs.join(' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function checkEmptyImages(html) {
@@ -956,7 +956,7 @@ function runAllChecks(html, url) {
   // kontakt-/cookie-sider, som strukturelt ofte har meget lidt statisk
   // tekst (formular hhv. et JS-indsat cookie-widget).
   if (!skipH1Check && !skipCookiesChecks) {
-    var mainContentText = extractMainContentText(cleanHtml);
+    var mainContentText = extractParagraphText(cleanHtml);
     if (mainContentText.length < MIN_CONTENT_LENGTH) {
       errors.push('Siden har næsten intet indhold (kun ' + mainContentText.length + ' tegn tekst) - tjek om siden mangler brødtekst');
     }
