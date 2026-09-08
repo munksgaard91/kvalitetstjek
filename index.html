@@ -958,7 +958,7 @@ function runAllChecks(html, url) {
   if (!skipH1Check && !skipCookiesChecks) {
     var mainContentText = extractParagraphText(cleanHtml);
     if (mainContentText.length < MIN_CONTENT_LENGTH) {
-      errors.push('Siden har næsten intet indhold (kun ' + mainContentText.length + ' tegn tekst) - tjek om siden mangler brødtekst');
+      errors.push('Har du husket at sætte undersiden op, der er næsten intet indhold.');
     }
   }
 
