@@ -506,6 +506,13 @@ var WORKER_URL = 'https://kvalitetstjek.rmu-5d1.workers.dev';
  */
 var MIN_CONTENT_LENGTH = 100;
 
+/**
+ * Mindste antal billeder i selve indholdsområdet, før en side med lidt
+ * brødtekst IKKE regnes som "tom" - fanger fx galleri-/portfolio-sider,
+ * hvor det rigtige indhold er billeder, ikke tekst.
+ */
+var MIN_CONTENT_IMAGES = 3;
+
 var STOCK_PATTERNS = [
   { pattern: /88\s*88\s*88\s*88/g,    label: 'Stock-telefon: 88 88 88 88' },
   { pattern: /\+4588888888/g,          label: 'Stock-telefon: +4588888888' },
@@ -516,6 +523,11 @@ var STOCK_PATTERNS = [
   { pattern: /FIRMA-NAVN/g,            label: 'Stock-firmanavn: FIRMA-NAVN' },
   { pattern: /Lorem ipsum/gi,          label: 'Stock-tekst: Lorem ipsum' },
   { pattern: /\bFornavn\s+Efternavn\b/gi, label: 'Stock-anmeldernavn: Fornavn Efternavn' },
+  { pattern: /Skriv\s+(en\s+)?overskrift\s+her/gi, label: 'Stock-tekst: Skriv overskrift her' },
+  { pattern: /Indsæt\s+(din\s+)?tekst\s+her/gi,    label: 'Stock-tekst: Indsæt tekst her' },
+  { pattern: /\bTest\s+test\b/gi,      label: 'Stock-tekst: Test test' },
+  { pattern: /Click here to edit/gi,   label: 'Stock-tekst: Click here to edit' },
+  { pattern: /Type your text here/gi,  label: 'Stock-tekst: Type your text here' },
 ];
 
 var KNOWN_EXTERNAL_DOMAINS = [
@@ -816,6 +828,18 @@ function extractParagraphText(html) {
   return paragraphs.join(' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * Tæller billeder i selve indholdsområdet (header/nav/footer fjernet
+ * først, så logo og andre boilerplate-billeder ikke tæller med).
+ */
+function countContentImages(html) {
+  var cleaned = html.replace(/<header\b[\s\S]*?<\/header>/gi, '');
+  cleaned = cleaned.replace(/<nav\b[\s\S]*?<\/nav>/gi, '');
+  cleaned = cleaned.replace(/<footer\b[\s\S]*?<\/footer>/gi, '');
+  var imgs = cleaned.match(/<img\b[^>]*>/gi) || [];
+  return imgs.length;
+}
+
 function checkEmptyImages(html) {
   var imgs = html.match(/<img\b[^>]*>/gi) || [];
   var items = [];
@@ -907,6 +931,11 @@ function runAllChecks(html, url) {
     errors.push('Site Titel er stadig "Best Stock" - ret i WP-admin under Indstillinger → Generelt → Webstedstitel');
   }
 
+  var hasFavicon = /<link\b[^>]*\brel\s*=\s*["'][^"']*icon[^"']*["']/i.test(cleanHtml);
+  if (!hasFavicon) {
+    errors.push('Har du husket at sætte en favicon op? Der blev ikke fundet nogen.');
+  }
+
   var logoMatches = cleanHtml.match(/[\/"']placeholder-logo(-\d+x\d+)?\.(png|jpe?g|svg|webp|gif)["']/gi);
   if (logoMatches) warnings.push('Placeholder-logo i billedfil (' + logoMatches.length + 'x)');
 
@@ -953,12 +982,15 @@ function runAllChecks(html, url) {
 
   // Fanger sider der reelt er "tomme" - kun en overskrift og ellers
   // ingen brødtekst i selve indholdsområdet. Springes over på
-  // kontakt-/cookie-sider, som strukturelt ofte har meget lidt statisk
-  // tekst (formular hhv. et JS-indsat cookie-widget).
+  // kontakt-/cookie-sider (meget lidt statisk tekst i forvejen), og på
+  // sider der i stedet består af rigtigt indhold i billedform (fx et
+  // galleri) - her er MIN_CONTENT_IMAGES eller flere billeder i selve
+  // indholdet nok til at siden ikke regnes som tom.
   if (!skipH1Check && !skipCookiesChecks) {
     var mainContentText = extractParagraphText(cleanHtml);
-    if (mainContentText.length < MIN_CONTENT_LENGTH) {
-      errors.push('Har du husket at sætte undersiden op, der er næsten intet indhold.');
+    var contentImageCount = countContentImages(cleanHtml);
+    if (mainContentText.length < MIN_CONTENT_LENGTH && contentImageCount < MIN_CONTENT_IMAGES) {
+      warnings.push('Har du husket at sætte undersiden op, der er næsten intet indhold.');
     }
   }
 
