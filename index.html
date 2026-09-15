@@ -729,6 +729,42 @@ function checkExternalLinksMissingBlank(html, ownDomains) {
   };
 }
 
+/**
+ * Finder TEKST-links (ikke billed-links, som fx et galleri-lightbox er)
+ * der peger direkte på en fil i WordPress' medie-bibliotek i stedet for
+ * en rigtig side - typisk et fejlklik hvor et link ved en fejl er sat
+ * til at pege på en uploadet fil (billede, PDF osv.) i stedet for den
+ * tiltænkte side. Sker sjældent med vilje, derfor en advarsel.
+ */
+function checkMediaFileLinks(html) {
+  var cleaned = stripScriptsAndStyles(html);
+  var anchorTags = cleaned.match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) || [];
+  var items = [];
+  var seen = {};
+
+  anchorTags.forEach(function(anchor) {
+    var openTag = anchor.match(/<a\b[^>]*>/i)[0];
+    var href = extractAttr(openTag, 'href');
+    if (!href) return;
+
+    var pathname;
+    try { pathname = new URL(href, 'https://dummy.invalid/').pathname; } catch (e) { return; }
+    if (!isMediaLibraryPath(pathname)) return;
+
+    // Et billede pakket ind i linket (fx et galleri-lightbox) er helt
+    // normalt og skal ikke tælles med - kun rene tekstlinks er mistænkelige.
+    if (/<img\b/i.test(anchor)) return;
+
+    if (seen[href]) return;
+    seen[href] = true;
+
+    var text = anchor.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    items.push({ href: href, text: text || '(ingen synlig tekst)', raw: anchor });
+  });
+
+  return items;
+}
+
 function extractPhoneNumbersWithContext(html) {
   var regex = /tel:\+?45?(\d{8})/gi;
   var match;
@@ -986,6 +1022,11 @@ function runAllChecks(html, url) {
   var emptyImageAlts = checkEmptyImages(cleanHtml);
   if (emptyImageAlts.length > 0) errors.push(emptyImageAlts.length + ' billede(r) med tom eller manglende src');
 
+  var mediaFileLinkItems = checkMediaFileLinks(cleanHtml);
+  if (mediaFileLinkItems.length > 0) {
+    warnings.push(mediaFileLinkItems.length + ' link(s) peger direkte på en mediefil i stedet for en side - formentlig en fejl');
+  }
+
   // Fanger sider der reelt er "tomme" - kun en overskrift og ellers
   // ingen brødtekst i selve indholdsområdet. Springes over på
   // kontakt-/cookie-sider (meget lidt statisk tekst i forvejen), og på
@@ -1008,6 +1049,7 @@ function runAllChecks(html, url) {
     bestOneItems: bestOneItems,
     deadLinkItems: deadLinks.items,
     emptyImageAlts: emptyImageAlts,
+    mediaFileLinkItems: mediaFileLinkItems,
     phonesWithContext: phonesWithContext,
     emailsWithContext: emailsWithContext,
     cvrsWithContext: cvrsWithContext
@@ -1141,7 +1183,8 @@ function warningHvorGroups(result) {
   return [
     { title: 'Telefonnumre', items: result.phonesWithContext, icon: '📞' },
     { title: 'Emails', items: result.emailsWithContext, icon: '✉️' },
-    { title: 'CVR-numre', items: result.cvrsWithContext, icon: '🏢' }
+    { title: 'CVR-numre', items: result.cvrsWithContext, icon: '🏢' },
+    { title: 'Links til mediefiler', items: result.mediaFileLinkItems, icon: '🖼', external: true }
   ];
 }
 
@@ -1406,6 +1449,16 @@ var CONCURRENCY = 4;
 var ASSET_EXTENSION_RE = /\.(jpg|jpeg|png|gif|webp|svg|avif|pdf|zip|xml|css|js|ico|woff2?|ttf|mp4|mp3|json)(\?|$)/i;
 
 /**
+ * Genkender links direkte ind i WordPress' medie-bibliotek
+ * (/wp-content/uploads/...) som en mediefil, uanset om filendelsen står
+ * i ASSET_EXTENSION_RE eller ej - sådan et link skal aldrig crawles og
+ * tjekkes som var det en underside.
+ */
+function isMediaLibraryPath(pathname) {
+  return /\/wp-content\/uploads\//i.test(pathname);
+}
+
+/**
  * Normaliserer et hostname til sammenligning, så www.dinsite.dk og
  * dinsite.dk regnes som samme domæne (ellers vil crawleren opfatte
  * interne links med det "modsatte" www-præfiks som eksterne og ikke
@@ -1573,6 +1626,7 @@ async function discoverSitemapUrls(originUrl, onProgress) {
       } catch (e) { continue; }
       if (normalizeHost(parsedPageUrl.host) !== originHost) continue;
       if (isExcludedPath(parsedPageUrl.pathname)) continue;
+      if (isMediaLibraryPath(parsedPageUrl.pathname)) continue;
       var key = canonicalPageKey(parsedPageUrl);
       if (seenPages[key]) continue;
       seenPages[key] = true;
@@ -1656,6 +1710,7 @@ function extractInternalLinks(html, baseUrl, originHost) {
     if (abs.protocol !== 'http:' && abs.protocol !== 'https:') continue;
     if (normalizeHost(abs.host) !== originHost) continue;
     if (ASSET_EXTENSION_RE.test(abs.pathname)) continue;
+    if (isMediaLibraryPath(abs.pathname)) continue;
     if (isExcludedPath(abs.pathname)) continue;
     found.push(abs.toString());
   }
