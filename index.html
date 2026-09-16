@@ -1379,7 +1379,8 @@ function buildSiteReport(pageResults, originUrl) {
   var okPages = pageResults.filter(function(p) { return p.result && p.result.errors.length === 0 && p.result.warnings.length === 0; });
   var errorCount = pageResults.filter(function(p) { return p.result && p.result.errors.length > 0; }).length;
   var warningCount = pageResults.filter(function(p) { return p.result && p.result.warnings.length > 0; }).length;
-  var fetchErrorPages = pageResults.filter(function(p) { return !p.result; });
+  var mediaFilePages = pageResults.filter(function(p) { return p.mediaRedirect; });
+  var fetchErrorPages = pageResults.filter(function(p) { return !p.result && !p.mediaRedirect; });
 
   var summaryText = pageResults.length + ' side(r) tjekket';
   if (okPages.length > 0) summaryText += ' – ' + okPages.length + ' bestået uden fund (vises ikke)';
@@ -1389,6 +1390,26 @@ function buildSiteReport(pageResults, originUrl) {
     resultEl.appendChild(el('div', { class: 'crawl-warning' }, [
       document.createTextNode('⚠️ Kun 1 side blev fundet og tjekket. Enten findes der intet sitemap og ingen interne links kunne følges videre, eller også pegede alle fundne sider reelt på den samme side. Tjek at URL\'en er korrekt, og at siden rent faktisk linker til sine undersider.')
     ]));
+  }
+
+  if (mediaFilePages.length > 0) {
+    resultEl.appendChild(el('div', { class: 'crawl-warning' }, [
+      document.createTextNode('⚠️ ' + mediaFilePages.length + ' link/menupunkt på sitet peger reelt på en mediefil, ikke en side (formentlig en fejl - sker meget sjældent med vilje):')
+    ]));
+    var mediaUl = el('ul', { class: 'item-list' });
+    mediaFilePages.forEach(function(p) {
+      mediaUl.appendChild(el('li', {}, [
+        el('span', { class: 'icon', text: '🖇️' }),
+        el('span', {}, [
+          el('span', { class: 'item-label' }, [
+            document.createTextNode(pathOf(p.url) + ' '),
+            el('a', { href: p.url, target: '_blank', rel: 'noopener', class: 'page-block-link', text: '↗' })
+          ]),
+          el('span', { class: 'item-context', text: 'Ender på: ' + p.mediaRedirect })
+        ])
+      ]));
+    });
+    resultEl.appendChild(el('div', { class: 'toggle-content' }, [mediaUl]));
   }
 
   buildFejlAdvarslerToggle(resultEl, pageResults.filter(function(p) { return p.result; }).map(function(p) {
@@ -1415,7 +1436,7 @@ function buildSiteReport(pageResults, originUrl) {
     ]));
   }
 
-  if (errorCount === 0 && warningCount === 0 && fetchErrorPages.length === 0) {
+  if (errorCount === 0 && warningCount === 0 && fetchErrorPages.length === 0 && mediaFilePages.length === 0) {
     resultEl.appendChild(el('div', { class: 'item-list-empty', text: 'Ingen fejl eller advarsler fundet på nogen sider.' }));
   }
 
@@ -1456,6 +1477,24 @@ var ASSET_EXTENSION_RE = /\.(jpg|jpeg|png|gif|webp|svg|avif|pdf|zip|xml|css|js|i
  */
 function isMediaLibraryPath(pathname) {
   return /\/wp-content\/uploads\//i.test(pathname);
+}
+
+/**
+ * Tjekker om en URL (typisk den ENDELIGE URL efter en evt. omdirigering)
+ * reelt er en mediefil, ikke en side - fanger både direkte
+ * uploads-links OG WordPress' automatiske "vedhæftningssider" (fx
+ * /et-billede-navn/), som Yoast SEO som standard omdirigerer direkte
+ * til selve filen. Det er derfor dette tjek skal køres EFTER hentning,
+ * på den URL man faktisk endte på - et link kan sagtens se ud som en
+ * normal side, men vise sig at være en mediefil når man følger den.
+ */
+function isMediaFileUrl(url) {
+  try {
+    var u = new URL(url);
+    return isMediaLibraryPath(u.pathname) || ASSET_EXTENSION_RE.test(u.pathname);
+  } catch (e) {
+    return false;
+  }
 }
 
 /**
@@ -1656,6 +1695,15 @@ async function checkAllPages(urls, onProgress) {
       }
 
       var finalUrl = res.finalUrl || url;
+
+      // Linket SÅ ud som en side, men endte (evt. via omdirigering) på
+      // en mediefil - typisk en WordPress-vedhæftningsside der bliver
+      // omdirigeret til selve filen. Skal ikke tjekkes som en underside.
+      if (isMediaFileUrl(finalUrl)) {
+        results[i] = { url: url, mediaRedirect: finalUrl };
+        continue;
+      }
+
       var finalKey;
       try { finalKey = canonicalPageKey(new URL(finalUrl)); } catch (e) { finalKey = finalUrl; }
 
@@ -1747,6 +1795,21 @@ async function crawlViaLinks(originUrl, startUrl, onProgress) {
       }
 
       var finalUrl = res.finalUrl || url;
+
+      // Linket SÅ ud som en side, men endte (evt. via omdirigering) på
+      // en mediefil - typisk en WordPress-vedhæftningsside der bliver
+      // omdirigeret til selve filen. Skal ikke tjekkes som en underside,
+      // og der skal ikke ledes efter flere links inde i selve filen.
+      if (isMediaFileUrl(finalUrl)) {
+        var mediaKey;
+        try { mediaKey = canonicalPageKey(new URL(finalUrl)); } catch (e) { mediaKey = finalUrl; }
+        if (!visited[mediaKey]) {
+          visited[mediaKey] = true;
+          pageResults.push({ url: url, mediaRedirect: finalUrl });
+        }
+        continue;
+      }
+
       var finalKey;
       try { finalKey = canonicalPageKey(new URL(finalUrl)); } catch (e) { finalKey = finalUrl; }
 
