@@ -912,12 +912,16 @@ function runAllChecks(html, url) {
   var CONTACT_PATH_ALIASES = ['/kontakt', '/contact'];
   var skipH1Check = CONTACT_PATH_ALIASES.indexOf(pagePathNoLang) !== -1;
 
-  // Cookie-siden er som regel standard-boilerplate fra et cookie-plugin
-  // (fx Cookiebot) - "Navn" som anmeldernavn, manglende H1 og eksterne
-  // links uden ny fane (til fx minecookies.org/datatilsynet.dk) er alt
-  // sammen forventet der og skal ikke tælle som fejl.
-  var COOKIES_PATH_ALIASES = ['/cookies', '/cookie-policy'];
-  var skipCookiesChecks = COOKIES_PATH_ALIASES.indexOf(pagePathNoLang) !== -1;
+  // Cookie-/persondatapolitik-sider er som regel standard-boilerplate
+  // fra et plugin (fx Cookiebot) - "Navn" som anmeldernavn, manglende H1
+  // og eksterne links uden ny fane (til fx minecookies.org/datatilsynet.dk)
+  // er alt sammen forventet der og skal ikke tælle som fejl. Matcher på
+  // SIDSTE sti-segment, så den også fanges hvis den ligger nestet et
+  // sted i strukturen (fx "/om-os/persondatapolitik/").
+  var COOKIES_SLUG_NAMES = ['cookies', 'cookie-policy', 'persondatapolitik', 'privatlivspolitik'];
+  var pagePathSegments = pagePathNoLang.replace(/\/+$/, '').split('/');
+  var lastPathSegment = pagePathSegments[pagePathSegments.length - 1];
+  var skipCookiesChecks = COOKIES_SLUG_NAMES.indexOf(lastPathSegment) !== -1;
   if (skipCookiesChecks) skipH1Check = true;
 
   // "Flere telefonnumre/emails"-advarslen giver ikke mening på sider der
