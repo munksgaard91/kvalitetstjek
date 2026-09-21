@@ -586,6 +586,59 @@ function checkBestOne(html) {
   return items;
 }
 
+/**
+ * Klassiske Lorem Ipsum-generatorer (og Bricks' egen demo-tekst) bruger
+ * ofte tilfældige uddrag af den latinske fyldtekst, som slet ikke
+ * indeholder selve ordene "Lorem ipsum" - fx "Fusce commodo aliquam
+ * arcu. Morbi nec metus." Denne ordliste dækker det latinske
+ * fyldtekst-ordforråd der går igen på tværs af generatorer/temaer.
+ */
+var LOREM_IPSUM_WORDS = [
+  'lorem', 'ipsum', 'dolor', 'amet', 'consectetur', 'adipiscing', 'elit',
+  'eiusmod', 'tempor', 'incididunt', 'labore', 'dolore', 'magna', 'aliqua',
+  'enim', 'veniam', 'quis', 'nostrud', 'exercitation', 'ullamco', 'laboris',
+  'aliquip', 'commodo', 'consequat', 'duis', 'aute', 'irure', 'reprehenderit',
+  'voluptate', 'velit', 'esse', 'cillum', 'fugiat', 'nulla', 'pariatur',
+  'excepteur', 'sint', 'occaecat', 'cupidatat', 'proident', 'sunt', 'culpa',
+  'officia', 'deserunt', 'mollit', 'anim', 'laborum', 'vestibulum', 'ante',
+  'primis', 'faucibus', 'orci', 'luctus', 'ultrices', 'posuere', 'cubilia',
+  'curae', 'aptent', 'taciti', 'sociosqu', 'litora', 'torquent', 'conubia',
+  'nostra', 'inceptos', 'himenaeos', 'curabitur', 'tincidunt', 'felis',
+  'elementum', 'fermentum', 'eget', 'pulvinar', 'arcu', 'eros', 'fusce',
+  'convallis', 'metus', 'morbi', 'varius', 'libero', 'ullamcorper',
+  'ultricies', 'nullam', 'turpis', 'egestas', 'integer', 'tortor', 'interdum',
+  'suspendisse', 'potenti', 'erat', 'volutpat', 'scelerisque', 'euismod',
+  'pellentesque', 'habitant', 'tristique', 'senectus', 'netus', 'malesuada',
+  'fames', 'nunc', 'augue', 'suscipit', 'vivamus', 'pretium', 'diam', 'ligula',
+  'lobortis', 'quam', 'lectus', 'risus', 'purus', 'sem', 'aliquet', 'massa',
+  'sapien', 'porttitor', 'ornare', 'donec', 'pharetra', 'cursus', 'auctor',
+  'tellus', 'congue', 'lacus', 'justo', 'proin', 'vitae', 'accumsan',
+  'venenatis', 'aenean', 'lacinia', 'maximus', 'efficitur', 'bibendum',
+  'feugiat', 'urna', 'hendrerit', 'platea', 'dictumst', 'habitasse',
+];
+
+/**
+ * Finder sætninger med usædvanlig høj tæthed af latinske
+ * fyldtekst-ord - fanger dermed Lorem Ipsum-lignende tekst, uanset om
+ * den indeholder selve ordene "Lorem ipsum" eller ej.
+ */
+function checkLoremIpsumLike(text) {
+  var sentences = text.split(/[.!?]+/);
+  var hits = [];
+  sentences.forEach(function(sentence) {
+    var trimmed = sentence.trim();
+    if (!trimmed) return;
+    var words = trimmed.toLowerCase().match(/[a-zæøåäöü]+/g) || [];
+    if (words.length < 3) return;
+    var matchCount = 0;
+    words.forEach(function(w) {
+      if (LOREM_IPSUM_WORDS.indexOf(w) !== -1) matchCount++;
+    });
+    if (matchCount >= 3) hits.push(trimmed);
+  });
+  return hits;
+}
+
 function checkStockSiteTitle(html) {
   var titleMatch = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
   if (!titleMatch) return false;
@@ -947,6 +1000,11 @@ function runAllChecks(html, url) {
   var bestOneItems = checkBestOne(cleanHtml);
   if (bestOneItems.length > 0) errors.push('"Best One" på kundens side (' + bestOneItems.length + 'x)');
 
+  var loremIpsumItems = checkLoremIpsumLike(cleanHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '));
+  if (loremIpsumItems.length > 0) {
+    errors.push('Stock-tekst: Lorem ipsum-lignende fyldtekst (' + loremIpsumItems.length + ' sætning(er))');
+  }
+
   var undersideMatches = cleanHtml.match(/>\s*Underside\s*</gi);
   if (undersideMatches) errors.push('"Underside" som nav-label (' + undersideMatches.length + 'x)');
 
@@ -1051,6 +1109,7 @@ function runAllChecks(html, url) {
     info: info,
     externalLinkItems: externalLinks.items,
     bestOneItems: bestOneItems,
+    loremIpsumItems: loremIpsumItems,
     deadLinkItems: deadLinks.items,
     emptyImageAlts: emptyImageAlts,
     mediaFileLinkItems: mediaFileLinkItems,
@@ -1177,6 +1236,7 @@ function buildHvorDetails(container, groups) {
 function errorHvorGroups(result) {
   return [
     { title: '"Best One" fundet', items: result.bestOneItems, icon: '📍' },
+    { title: 'Lorem ipsum-lignende tekst', items: result.loremIpsumItems, icon: '📝' },
     { title: 'Døde links', items: result.deadLinkItems, icon: '🔗' },
     { title: 'Tomme billeder – alt-tekst', items: result.emptyImageAlts, icon: '🖼' },
     { title: 'Eksterne links uden ny fane', items: result.externalLinkItems, icon: '↗', external: true }
