@@ -693,7 +693,7 @@ function checkDeadLinks(html) {
       isDead = true;
     } else {
       href = href.trim();
-      if (href === '' || /^#!?$/.test(href) || /^javascript:\s*(void\(0\))?;?\s*$/i.test(href)) {
+      if (href === '' || /^#!?$/.test(href) || /^javascript:\s*(void\(0\))?;?\s*$/i.test(href) || /_wp_link_placeholder/i.test(href)) {
         isDead = true;
       }
     }
@@ -1825,6 +1825,7 @@ function extractInternalLinks(html, baseUrl, originHost) {
     var raw = m[1].trim();
     if (!raw || raw.charAt(0) === '#') continue;
     if (/^(javascript|mailto|tel):/i.test(raw)) continue;
+    if (/_wp_link_placeholder/i.test(raw)) continue;
     var abs;
     try {
       abs = new URL(raw, baseUrl);
