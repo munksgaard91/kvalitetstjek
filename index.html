@@ -783,11 +783,19 @@ function checkExternalLinksMissingBlank(html, ownDomains) {
 }
 
 /**
+ * Filtyper der helt normalt og bevidst linkes direkte til som download
+ * (fx et nyhedsbrev eller en produktoversigt i PDF) - skal IKKE tælles
+ * som et formodet fejlklik, i modsætning til fx et billede.
+ */
+var EXPECTED_DOWNLOAD_EXTENSIONS_RE = /\.(pdf|docx?|xlsx?|pptx?|zip|csv)(\?|$)/i;
+
+/**
  * Finder TEKST-links (ikke billed-links, som fx et galleri-lightbox er)
  * der peger direkte på en fil i WordPress' medie-bibliotek i stedet for
  * en rigtig side - typisk et fejlklik hvor et link ved en fejl er sat
- * til at pege på en uploadet fil (billede, PDF osv.) i stedet for den
- * tiltænkte side. Sker sjældent med vilje, derfor en advarsel.
+ * til at pege på en uploadet fil (billede osv.) i stedet for den
+ * tiltænkte side. Bevidste download-links (PDF, Word, Excel osv.) er
+ * undtaget, da det er helt normal praksis.
  */
 function checkMediaFileLinks(html) {
   var cleaned = stripScriptsAndStyles(html);
@@ -803,6 +811,7 @@ function checkMediaFileLinks(html) {
     var pathname;
     try { pathname = new URL(href, 'https://dummy.invalid/').pathname; } catch (e) { return; }
     if (!isMediaLibraryPath(pathname)) return;
+    if (EXPECTED_DOWNLOAD_EXTENSIONS_RE.test(pathname)) return;
 
     // Et billede pakket ind i linket (fx et galleri-lightbox) er helt
     // normalt og skal ikke tælles med - kun rene tekstlinks er mistænkelige.
@@ -960,9 +969,11 @@ function runAllChecks(html, url) {
   try { pagePath = new URL(url).pathname.replace(/\/+$/, '') || '/'; } catch (e) {}
   var pagePathNoLang = stripLanguagePrefix(pagePath).toLowerCase();
 
-  // H1-tjekket springes over på kontaktsider - de har ofte ikke (og skal
-  // ikke nødvendigvis have) en klassisk H1-overskrift. Inkl. oversættelser.
-  var CONTACT_PATH_ALIASES = ['/kontakt', '/contact'];
+  // H1-tjekket OG "næsten intet indhold"-advarslen springes over på
+  // kontakt-/booking-sider - de har ofte ikke en klassisk H1-overskrift,
+  // og er naturligt korte (fx bare en formular eller et bookingwidget).
+  // Inkl. oversættelser.
+  var CONTACT_PATH_ALIASES = ['/kontakt', '/contact', '/book-tid', '/booking', '/book-appointment'];
   var skipH1Check = CONTACT_PATH_ALIASES.indexOf(pagePathNoLang) !== -1;
 
   // Cookie-/persondatapolitik-sider er som regel standard-boilerplate
