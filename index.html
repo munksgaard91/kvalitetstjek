@@ -784,10 +784,11 @@ function checkExternalLinksMissingBlank(html, ownDomains) {
 
 /**
  * Filtyper der helt normalt og bevidst linkes direkte til som download
- * (fx et nyhedsbrev eller en produktoversigt i PDF) - skal IKKE tælles
- * som et formodet fejlklik, i modsætning til fx et billede.
+ * eller afspilning (fx et nyhedsbrev/produktoversigt i PDF, eller en
+ * lydfil-smagsprøve) - skal IKKE tælles som et formodet fejlklik, i
+ * modsætning til fx et billede.
  */
-var EXPECTED_DOWNLOAD_EXTENSIONS_RE = /\.(pdf|docx?|xlsx?|pptx?|zip|csv)(\?|$)/i;
+var EXPECTED_DOWNLOAD_EXTENSIONS_RE = /\.(pdf|docx?|xlsx?|pptx?|zip|csv|mp3|wav|m4a|ogg)(\?|$)/i;
 
 /**
  * Finder TEKST-links (ikke billed-links, som fx et galleri-lightbox er)
