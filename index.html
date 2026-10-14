@@ -1418,6 +1418,10 @@ function buildFejlAdvarslerToggle(container, pages) {
   var totalErrors = pages.reduce(function(sum, p) { return sum + p.result.errors.length; }, 0);
   var totalWarnings = pages.reduce(function(sum, p) { return sum + p.result.warnings.length; }, 0);
 
+  // Intet at vise: Bestået-boksen nederst siger det hele, så toggle'en
+  // ville bare være fyld.
+  if (totalErrors === 0 && totalWarnings === 0) return;
+
   var errBtn = el('button', { type: 'button', class: 'toggle-option', 'data-tab': 'errors' }, [
     el('span', { class: 'toggle-label', text: 'Fejl' }),
     el('span', { class: 'toggle-count', text: String(totalErrors) })
