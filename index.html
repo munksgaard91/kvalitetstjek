@@ -622,6 +622,9 @@ var LOREM_IPSUM_WORDS = [
  * fyldtekst-ord - fanger dermed Lorem Ipsum-lignende tekst, uanset om
  * den indeholder selve ordene "Lorem ipsum" eller ej.
  */
+var LOREM_IPSUM_WORD_SET = {};
+LOREM_IPSUM_WORDS.forEach(function(w) { LOREM_IPSUM_WORD_SET[w] = true; });
+
 function checkLoremIpsumLike(text) {
   var sentences = text.split(/[.!?]+/);
   var hits = [];
@@ -632,7 +635,7 @@ function checkLoremIpsumLike(text) {
     if (words.length < 3) return;
     var matchCount = 0;
     words.forEach(function(w) {
-      if (LOREM_IPSUM_WORDS.indexOf(w) !== -1) matchCount++;
+      if (LOREM_IPSUM_WORD_SET[w]) matchCount++;
     });
     if (matchCount >= 3) hits.push(trimmed);
   });
@@ -664,64 +667,85 @@ function extractH1Texts(html) {
  * et link fejlagtigt blive opfattet som om det manglede en href.
  */
 function extractAttr(tag, name) {
-  var re = new RegExp(name + '\\s*=\\s*(?:"([^"]*)"|\'([^\']*)\'|([^\\s>]+))', 'i');
+  // (^|\s) sikrer at fx "href" ikke matcher inde i "data-href", og
+  // "src" ikke inde i "data-src" (lazy-load) eller "srcset".
+  var re = new RegExp('(?:^|\\s)' + name + '\\s*=\\s*(?:"([^"]*)"|\'([^\']*)\'|([^\\s>]+))', 'i');
   var m = tag.match(re);
   if (!m) return null;
   return m[1] !== undefined ? m[1] : (m[2] !== undefined ? m[2] : m[3]);
 }
 
-function checkDeadLinks(html) {
+/**
+ * Finder alle <a>-tags i (renset) HTML én gang og returnerer dem i en
+ * ensartet form, så de enkelte link-tjek ikke hver især skal scanne hele
+ * siden igen. href er null hvis attributten mangler, ellers trimmet.
+ */
+function parseAnchors(html) {
+  var regex = /<a\b[^>]*>[\s\S]*?<\/a>/gi;
+  var match;
+  var anchors = [];
+  while ((match = regex.exec(html)) !== null) {
+    var raw = match[0];
+    var openTag = raw.match(/<a\b[^>]*>/i)[0];
+    var href = extractAttr(openTag, 'href');
+    anchors.push({
+      raw: raw,
+      openTag: openTag,
+      href: href === null ? null : href.trim(),
+      text: raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
+      hasImg: /<img\b/i.test(raw),
+      index: match.index
+    });
+  }
+  return anchors;
+}
+
+function isDeadHref(href) {
+  if (href === null || href === '') return true;
+  return /^#!?$/.test(href) || /^javascript:\s*(void\(0\))?;?\s*$/i.test(href) || /_wp_link_placeholder/i.test(href);
+}
+
+function checkDeadLinks(cleanHtml) {
   var socialKeywords = /facebook|instagram|linkedin|twitter|youtube|tiktok|pinterest|snapchat/i;
 
-  var cleaned = stripScriptsAndStyles(html);
-  cleaned = cleaned.replace(/id=["']brx-header["'][\s\S]*?(?=id=["']brx-content["']|<main\b)/i, '');
+  // Header/nav udelades: dropdown-toggles med href="#" er forventede der.
+  var cleaned = cleanHtml.replace(/id=["']brx-header["'][\s\S]*?(?=id=["']brx-content["']|<main\b)/i, '');
   cleaned = cleaned.replace(/<header\b[\s\S]*?<\/header>/gi, '');
   cleaned = cleaned.replace(/<nav\b[\s\S]*?<\/nav>/gi, '');
 
-  var regex = /<a\b[^>]*>[\s\S]*?<\/a>/gi;
-  var match;
   var count = 0;
   var someCount = 0;
   var items = [];
 
-  while ((match = regex.exec(cleaned)) !== null) {
-    var link = match[0];
-    var openTag = link.match(/<a\b[^>]*>/i)[0];
-    var href = extractAttr(openTag, 'href');
-    var isDead = false;
-    if (href === null) {
-      isDead = true;
-    } else {
-      href = href.trim();
-      if (href === '' || /^#!?$/.test(href) || /^javascript:\s*(void\(0\))?;?\s*$/i.test(href) || /_wp_link_placeholder/i.test(href)) {
-        isDead = true;
-      }
-    }
-    if (isDead) {
-      count++;
-      if (socialKeywords.test(link)) someCount++;
-      var linkText = link.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      items.push({
-        text: linkText || '(ingen synlig tekst - fx et ikon)',
-        context: getContextSnippet(cleaned, match.index, 45),
-        raw: link
-      });
-    }
-  }
+  parseAnchors(cleaned).forEach(function(a) {
+    if (!isDeadHref(a.href)) return;
+    count++;
+    if (socialKeywords.test(a.raw)) someCount++;
+    items.push({
+      text: a.text || '(ingen synlig tekst - fx et ikon)',
+      context: getContextSnippet(cleaned, a.index, 45),
+      raw: a.raw
+    });
+  });
   return { count: count, someCount: someCount, items: items };
 }
 
-function extractFrequentDomains(html, ownHostname, excludeDomains) {
+function linkDomainOf(href) {
+  if (!href || !/^(https?:)?\/\//i.test(href)) return null;
+  var m = href.match(/^(?:https?:)?\/\/([^\/]+)/i);
+  return m ? m[1].replace(/^www\./i, '').toLowerCase() : null;
+}
+
+function extractFrequentDomains(anchors, ownHostname, excludeDomains) {
   var THRESHOLD = 3;
   var excludeSet = {};
   excludeDomains.forEach(function(d) { excludeSet[d] = true; });
   excludeSet[ownHostname.replace(/^www\./i, '').toLowerCase()] = true;
 
-  var anchorTags = stripScriptsAndStyles(html).match(/<a\b[^>]*>/gi) || [];
   var counts = {};
 
-  anchorTags.forEach(function(tag) {
-    var href = extractAttr(tag, 'href');
+  anchors.forEach(function(a) {
+    var href = a.href;
     if (!href || !/^(https?:)?\/\//i.test(href)) return;
     var domainMatch = href.match(/^(?:https?:)?\/\/([^\/]+)/i);
     if (!domainMatch) return;
@@ -733,44 +757,34 @@ function extractFrequentDomains(html, ownHostname, excludeDomains) {
   return Object.keys(counts).filter(function(d) { return counts[d] >= THRESHOLD; });
 }
 
-function checkExternalLinksMissingBlank(html, ownDomains) {
+function checkExternalLinksMissingBlank(anchors, ownDomains) {
   var ownSet = {};
   ownDomains.forEach(function(d) {
     if (d) ownSet[d.replace(/^www\./i, '').toLowerCase()] = true;
   });
 
-  var cleaned = stripScriptsAndStyles(html);
-  var anchorTags = cleaned.match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) || [];
   var count = 0;
   var domains = {};
   var itemsByHref = {};
 
-  anchorTags.forEach(function(anchor) {
-    var openTag = anchor.match(/<a\b[^>]*>/i)[0];
-    var href = extractAttr(openTag, 'href');
-    if (!href || !/^(https?:)?\/\//i.test(href)) return;
-
-    var domainMatch = href.match(/^(?:https?:)?\/\/([^\/]+)/i);
-    if (!domainMatch) return;
-
-    var linkDomain = domainMatch[1].replace(/^www\./i, '').toLowerCase();
+  anchors.forEach(function(a) {
+    var linkDomain = linkDomainOf(a.href);
+    if (!linkDomain) return;
     if (ownSet[linkDomain]) return;
     if (isLightboxVideoDomain(linkDomain)) return;
 
-    var target = extractAttr(openTag, 'target');
-    var hasBlank = target && target.toLowerCase() === '_blank';
-    if (hasBlank) return;
+    var target = extractAttr(a.openTag, 'target');
+    if (target && target.toLowerCase() === '_blank') return;
 
     count++;
     domains[linkDomain] = true;
 
-    if (!itemsByHref[href]) {
-      var text = anchor.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      itemsByHref[href] = {
-        href: href,
-        text: text || '(ingen synlig tekst - fx et ikon)',
+    if (!itemsByHref[a.href]) {
+      itemsByHref[a.href] = {
+        href: a.href,
+        text: a.text || '(ingen synlig tekst - fx et ikon)',
         domain: linkDomain,
-        raw: anchor
+        raw: a.raw
       };
     }
   });
@@ -791,6 +805,42 @@ function checkExternalLinksMissingBlank(html, ownDomains) {
 var EXPECTED_DOWNLOAD_EXTENSIONS_RE = /\.(pdf|docx?|xlsx?|pptx?|zip|csv|mp3|wav|m4a|ogg)(\?|$)/i;
 
 /**
+ * Finder knapper/links hvor teksten ikke passer til hvor linket går hen:
+ * en "Kontakt"-knap der linker til tel:, eller en "Ring til os"-knap der
+ * IKKE linker til tel: (fx til /kontakt/). Typisk en kopieret knap hvor
+ * kun teksten er rettet.
+ */
+function checkCtaLinkMismatch(anchors) {
+  var items = [];
+  var seen = {};
+
+  anchors.forEach(function(a) {
+    var href = a.href;
+    if (!href || href.charAt(0) === '#') return;
+
+    var text = a.text;
+    if (!text) return;
+    var lower = text.toLowerCase();
+    var isTel = /^tel:/i.test(href);
+
+    var problem = null;
+    if (/^(kontakt|contact)\b/.test(lower) && isTel) {
+      problem = '"' + text + '" linker til et telefonnummer i stedet for kontaktsiden';
+    } else if (/\b(ring|call)\b/.test(lower) && !isTel) {
+      problem = '"' + text + '" linker ikke til et telefonnummer (tel:)';
+    }
+    if (!problem) return;
+
+    var key = text + '|' + href;
+    if (seen[key]) return;
+    seen[key] = true;
+    items.push({ href: href, text: problem, raw: a.raw });
+  });
+
+  return items;
+}
+
+/**
  * Finder TEKST-links (ikke billed-links, som fx et galleri-lightbox er)
  * der peger direkte på en fil i WordPress' medie-bibliotek i stedet for
  * en rigtig side - typisk et fejlklik hvor et link ved en fejl er sat
@@ -798,15 +848,12 @@ var EXPECTED_DOWNLOAD_EXTENSIONS_RE = /\.(pdf|docx?|xlsx?|pptx?|zip|csv|mp3|wav|
  * tiltænkte side. Bevidste download-links (PDF, Word, Excel osv.) er
  * undtaget, da det er helt normal praksis.
  */
-function checkMediaFileLinks(html) {
-  var cleaned = stripScriptsAndStyles(html);
-  var anchorTags = cleaned.match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) || [];
+function checkMediaFileLinks(anchors) {
   var items = [];
   var seen = {};
 
-  anchorTags.forEach(function(anchor) {
-    var openTag = anchor.match(/<a\b[^>]*>/i)[0];
-    var href = extractAttr(openTag, 'href');
+  anchors.forEach(function(a) {
+    var href = a.href;
     if (!href) return;
 
     var pathname;
@@ -816,25 +863,26 @@ function checkMediaFileLinks(html) {
 
     // Et billede pakket ind i linket (fx et galleri-lightbox) er helt
     // normalt og skal ikke tælles med - kun rene tekstlinks er mistænkelige.
-    if (/<img\b/i.test(anchor)) return;
+    if (a.hasImg) return;
 
     if (seen[href]) return;
     seen[href] = true;
 
-    var text = anchor.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-    items.push({ href: href, text: text || '(ingen synlig tekst)', raw: anchor });
+    items.push({ href: href, text: a.text || '(ingen synlig tekst)', raw: a.raw });
   });
 
   return items;
 }
 
 function extractPhoneNumbersWithContext(html) {
-  var regex = /tel:\+?45?(\d{8})/gi;
+  // Matcher tel:+4551890430, tel:4551890430, tel:51890430 og varianter med
+  // mellemrum/bindestreger (tel:+45 51 89 04 30). Landekoden er valgfri.
+  var regex = /tel:\s*\+?(?:45)?[\s\-]*((?:\d[\s\-]*){8})(?!\d)/gi;
   var match;
   var seen = {};
   var items = [];
   while ((match = regex.exec(html)) !== null) {
-    var num = match[1];
+    var num = match[1].replace(/\D/g, '');
     if (num !== '88888888' && !seen[num]) {
       seen[num] = true;
       var formatted = num.replace(/(\d{2})(\d{2})(\d{2})(\d{2})/, '$1 $2 $3 $4');
@@ -876,7 +924,7 @@ function countUniqueEmailDomains(emails) {
 }
 
 function extractCVRsWithContext(html) {
-  var regex = /CVR[:\s]*(\d{8})/gi;
+  var regex = /CVR(?:[\s.\-]*n(?:r|ummer)\.?)?[:\s.]*(\d{8})(?!\d)/gi;
   var match;
   var seen = {};
   var items = [];
@@ -900,15 +948,6 @@ function extractCVRs(html) {
   return extractCVRsWithContext(html).map(function(i) { return i.value; });
 }
 
-function extractAddress(html) {
-  var footerMatch = html.match(/id=["']brx-footer["'][\s\S]*$/i);
-  if (!footerMatch) return null;
-  var footer = footerMatch[0];
-  var addrMatch = footer.match(/>\s*([\wæøåÆØÅ\s\-\.]+\s+\d+[^<]{0,30}\d{4}\s+[\wæøåÆØÅ\s]+)\s*</i);
-  if (addrMatch) return addrMatch[1].trim();
-  return null;
-}
-
 /**
  * Trækker KUN den tekst ud der står i egentlige <p>-tags (rigtig
  * brødtekst) - bruges til at opdage sider der reelt er "tomme" (kun en
@@ -919,11 +958,15 @@ function extractAddress(html) {
  * nav og footer fjernes helt først, så en evt. "om os"-tekst i footeren
  * (som findes på alle sider) heller ikke tæller med.
  */
-function extractParagraphText(html) {
-  var cleaned = html.replace(/<header\b[\s\S]*?<\/header>/gi, '');
-  cleaned = cleaned.replace(/<nav\b[\s\S]*?<\/nav>/gi, '');
-  cleaned = cleaned.replace(/<footer\b[\s\S]*?<\/footer>/gi, '');
-  var paragraphs = cleaned.match(/<p\b[^>]*>[\s\S]*?<\/p>/gi) || [];
+function stripHeaderNavFooter(html) {
+  return html
+    .replace(/<header\b[\s\S]*?<\/header>/gi, '')
+    .replace(/<nav\b[\s\S]*?<\/nav>/gi, '')
+    .replace(/<footer\b[\s\S]*?<\/footer>/gi, '');
+}
+
+function extractParagraphText(contentHtml) {
+  var paragraphs = contentHtml.match(/<p\b[^>]*>[\s\S]*?<\/p>/gi) || [];
   return paragraphs.join(' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
@@ -931,11 +974,8 @@ function extractParagraphText(html) {
  * Tæller billeder i selve indholdsområdet (header/nav/footer fjernet
  * først, så logo og andre boilerplate-billeder ikke tæller med).
  */
-function countContentImages(html) {
-  var cleaned = html.replace(/<header\b[\s\S]*?<\/header>/gi, '');
-  cleaned = cleaned.replace(/<nav\b[\s\S]*?<\/nav>/gi, '');
-  cleaned = cleaned.replace(/<footer\b[\s\S]*?<\/footer>/gi, '');
-  var imgs = cleaned.match(/<img\b[^>]*>/gi) || [];
+function countContentImages(contentHtml) {
+  var imgs = contentHtml.match(/<img\b[^>]*>/gi) || [];
   return imgs.length;
 }
 
@@ -961,7 +1001,6 @@ function checkEmptyImages(html) {
 function runAllChecks(html, url) {
   var errors = [];
   var warnings = [];
-  var info = [];
   var hostname = url.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
 
   // Stien uden evt. sprogpræfiks (fx "/en/kontakt" -> "/kontakt"), så
@@ -1002,6 +1041,7 @@ function runAllChecks(html, url) {
   // Cookiebot/NitroPack-scripts (og andre <script>/<style>-blokke) ikke
   // ved en fejl bliver læst som rigtigt sideindhold.
   var cleanHtml = stripScriptsAndStyles(html);
+  var anchors = parseAnchors(cleanHtml);
 
   STOCK_PATTERNS.forEach(function(check) {
     check.pattern.lastIndex = 0;
@@ -1061,7 +1101,6 @@ function runAllChecks(html, url) {
     warnings.push('Flere forskellige telefonnumre: ' + phones.join(', '));
     phonesWithContext = extractPhoneNumbersWithContext(cleanHtml);
   }
-  if (phones.length > 0) info.push({ icon: '📞', label: 'Telefon', text: phones.join(', ') });
 
   var emails = extractEmails(cleanHtml);
   var emailsWithContext = [];
@@ -1069,21 +1108,17 @@ function runAllChecks(html, url) {
     warnings.push('Flere forskellige emails: ' + emails.join(', '));
     emailsWithContext = extractEmailsWithContext(cleanHtml);
   }
-  if (emails.length > 0) info.push({ icon: '✉️', label: 'Email', text: emails.join(', ') });
 
   var emailDomains = emails.map(function(e) { return e.split('@')[1]; });
   var externalLinks = { count: 0, domains: [], items: [] };
   if (!skipCookiesChecks) {
-    var frequentDomains = extractFrequentDomains(cleanHtml, hostname, KNOWN_EXTERNAL_DOMAINS.concat(emailDomains));
+    var frequentDomains = extractFrequentDomains(anchors, hostname, KNOWN_EXTERNAL_DOMAINS.concat(emailDomains));
     var ownDomains = [hostname].concat(emailDomains).concat(frequentDomains);
-    externalLinks = checkExternalLinksMissingBlank(cleanHtml, ownDomains);
+    externalLinks = checkExternalLinksMissingBlank(anchors, ownDomains);
     if (externalLinks.count > 0) {
       errors.push(externalLinks.count + ' eksterne link(s) åbner ikke i ny fane (' + externalLinks.domains.join(', ') + ')');
     }
   }
-
-  var address = extractAddress(cleanHtml);
-  if (address) info.push({ icon: '📍', label: 'Adresse', text: address });
 
   var cvrs = extractCVRs(cleanHtml);
   var cvrsWithContext = [];
@@ -1091,12 +1126,16 @@ function runAllChecks(html, url) {
     warnings.push('Flere forskellige CVR-numre: ' + cvrs.join(', '));
     cvrsWithContext = extractCVRsWithContext(cleanHtml);
   }
-  if (cvrs.length > 0) info.push({ icon: '🏢', label: 'CVR', text: cvrs.join(', ') });
 
   var emptyImageAlts = checkEmptyImages(cleanHtml);
   if (emptyImageAlts.length > 0) errors.push(emptyImageAlts.length + ' billede(r) med tom eller manglende src');
 
-  var mediaFileLinkItems = checkMediaFileLinks(cleanHtml);
+  var ctaMismatchItems = checkCtaLinkMismatch(anchors);
+  if (ctaMismatchItems.length > 0) {
+    warnings.push(ctaMismatchItems.length + ' knap(per) hvor teksten ikke passer til linket (fx "Kontakt" der ringer op, eller "Ring til os" der ikke gør)');
+  }
+
+  var mediaFileLinkItems = checkMediaFileLinks(anchors);
   if (mediaFileLinkItems.length > 0) {
     warnings.push(mediaFileLinkItems.length + ' link(s) peger direkte på en mediefil i stedet for en side - formentlig en fejl');
   }
@@ -1108,8 +1147,9 @@ function runAllChecks(html, url) {
   // galleri) - her er MIN_CONTENT_IMAGES eller flere billeder i selve
   // indholdet nok til at siden ikke regnes som tom.
   if (!skipH1Check && !skipCookiesChecks) {
-    var mainContentText = extractParagraphText(cleanHtml);
-    var contentImageCount = countContentImages(cleanHtml);
+    var contentHtml = stripHeaderNavFooter(cleanHtml);
+    var mainContentText = extractParagraphText(contentHtml);
+    var contentImageCount = countContentImages(contentHtml);
     if (mainContentText.length < MIN_CONTENT_LENGTH && contentImageCount < MIN_CONTENT_IMAGES) {
       warnings.push('Har du husket at sætte undersiden op, der er næsten intet indhold.');
     }
@@ -1118,13 +1158,13 @@ function runAllChecks(html, url) {
   return {
     errors: errors,
     warnings: warnings,
-    info: info,
     externalLinkItems: externalLinks.items,
     bestOneItems: bestOneItems,
     loremIpsumItems: loremIpsumItems,
     deadLinkItems: deadLinks.items,
     emptyImageAlts: emptyImageAlts,
     mediaFileLinkItems: mediaFileLinkItems,
+    ctaMismatchItems: ctaMismatchItems,
     phonesWithContext: phonesWithContext,
     emailsWithContext: emailsWithContext,
     cvrsWithContext: cvrsWithContext
@@ -1260,7 +1300,8 @@ function warningHvorGroups(result) {
     { title: 'Telefonnumre', items: result.phonesWithContext, icon: '📞' },
     { title: 'Emails', items: result.emailsWithContext, icon: '✉️' },
     { title: 'CVR-numre', items: result.cvrsWithContext, icon: '🏢' },
-    { title: 'Links til mediefiler', items: result.mediaFileLinkItems, icon: '🖼', external: true }
+    { title: 'Links til mediefiler', items: result.mediaFileLinkItems, icon: '🖼', external: true },
+    { title: 'Knaptekst passer ikke til linket', items: result.ctaMismatchItems, icon: '📞' }
   ];
 }
 
@@ -1818,12 +1859,10 @@ function normalizeForCrawl(url) {
  * (ligesom en almindelig besøgende ville browse rundt).
  */
 function extractInternalLinks(html, baseUrl, originHost) {
-  var cleaned = stripScriptsAndStyles(html);
-  var re = /<a\b[^>]*href\s*=\s*["']([^"']+)["']/gi;
-  var m;
+  var anchors = parseAnchors(stripScriptsAndStyles(html));
   var found = [];
-  while ((m = re.exec(cleaned)) !== null) {
-    var raw = m[1].trim();
+  for (var k = 0; k < anchors.length; k++) {
+    var raw = anchors[k].href;
     if (!raw || raw.charAt(0) === '#') continue;
     if (/^(javascript|mailto|tel):/i.test(raw)) continue;
     if (/_wp_link_placeholder/i.test(raw)) continue;
@@ -1857,61 +1896,77 @@ async function crawlViaLinks(originUrl, startUrl, onProgress) {
   try { queued[canonicalPageKey(new URL(startNormalized))] = true; } catch (e) {}
   var pageResults = [];
 
-  while (frontier.length > 0 && pageResults.length < MAX_PAGES) {
-    var batch = frontier.splice(0, CONCURRENCY);
-    var responses = await Promise.all(batch.map(function(url) { return fetchViaWorker(url); }));
-
-    for (var i = 0; i < batch.length; i++) {
-      var url = batch[i];
-      var res = responses[i];
-      onProgress(pageResults.length + 1, url);
-
-      if (!res.ok) {
-        pageResults.push({ url: url, error: res.error });
-        continue;
-      }
-
-      var finalUrl = res.finalUrl || url;
-
-      // Linket SÅ ud som en side, men endte (evt. via omdirigering) på
-      // en mediefil - typisk en WordPress-vedhæftningsside der bliver
-      // omdirigeret til selve filen. Skal ikke tjekkes som en underside,
-      // og der skal ikke ledes efter flere links inde i selve filen.
-      if (isMediaFileUrl(finalUrl)) {
-        var mediaKey;
-        try { mediaKey = canonicalPageKey(new URL(finalUrl)); } catch (e) { mediaKey = finalUrl; }
-        if (!visited[mediaKey]) {
-          visited[mediaKey] = true;
-          pageResults.push({ url: url, mediaRedirect: finalUrl });
-        }
-        continue;
-      }
-
-      var finalKey;
-      try { finalKey = canonicalPageKey(new URL(finalUrl)); } catch (e) { finalKey = finalUrl; }
-
-      // Endt på en side vi (via en anden URL-variant, fx www./trailing
-      // slash, eller en omdirigering) allerede har tjekket - spring over
-      // så den ikke tælles/vises to gange i rapporten.
-      if (visited[finalKey]) continue;
-      visited[finalKey] = true;
-
-      pageResults.push({ url: finalUrl, result: runAllChecks(res.html, finalUrl) });
-
-      if (pageResults.length >= MAX_PAGES) continue;
-
-      extractInternalLinks(res.html, finalUrl, originHost).forEach(function(link) {
-        var linkKey;
-        try { linkKey = canonicalPageKey(new URL(link)); } catch (e) { linkKey = link; }
-        if (!visited[linkKey] && !queued[linkKey]) {
-          queued[linkKey] = true;
-          frontier.push(link);
-        }
-      });
-    }
+  function keyOf(url) {
+    try { return canonicalPageKey(new URL(url)); } catch (e) { return url; }
   }
 
-  return pageResults;
+  function handle(url, res) {
+    if (pageResults.length >= MAX_PAGES) return;
+    onProgress(pageResults.length + 1, url);
+
+    if (!res.ok) {
+      pageResults.push({ url: url, error: res.error });
+      return;
+    }
+
+    var finalUrl = res.finalUrl || url;
+
+    // Linket SÅ ud som en side, men endte (evt. via omdirigering) på
+    // en mediefil - typisk en WordPress-vedhæftningsside der bliver
+    // omdirigeret til selve filen. Skal ikke tjekkes som en underside,
+    // og der skal ikke ledes efter flere links inde i selve filen.
+    if (isMediaFileUrl(finalUrl)) {
+      var mediaKey = keyOf(finalUrl);
+      if (!visited[mediaKey]) {
+        visited[mediaKey] = true;
+        pageResults.push({ url: url, mediaRedirect: finalUrl });
+      }
+      return;
+    }
+
+    // Endt på en side vi (via en anden URL-variant, fx www./trailing
+    // slash, eller en omdirigering) allerede har tjekket - spring over
+    // så den ikke tælles/vises to gange i rapporten.
+    var finalKey = keyOf(finalUrl);
+    if (visited[finalKey]) return;
+    visited[finalKey] = true;
+
+    pageResults.push({ url: finalUrl, result: runAllChecks(res.html, finalUrl) });
+    if (pageResults.length >= MAX_PAGES) return;
+
+    extractInternalLinks(res.html, finalUrl, originHost).forEach(function(link) {
+      var linkKey = keyOf(link);
+      if (!visited[linkKey] && !queued[linkKey]) {
+        queued[linkKey] = true;
+        frontier.push(link);
+      }
+    });
+  }
+
+  // Worker-pool: op til CONCURRENCY hentninger ad gangen, og en ny
+  // startes så snart én er færdig - en enkelt langsom side blokerer
+  // dermed ikke de andre pladser (modsat batch + Promise.all).
+  return new Promise(function(resolve) {
+    var active = 0;
+
+    function launch(url) {
+      active++;
+      fetchViaWorker(url).then(function(res) {
+        try { handle(url, res); } catch (e) { pageResults.push({ url: url, error: 'Fejl i tjek: ' + e.message }); }
+        active--;
+        pump();
+      });
+    }
+
+    function pump() {
+      while (active < CONCURRENCY && frontier.length > 0 && pageResults.length < MAX_PAGES) {
+        launch(frontier.shift());
+      }
+      if (active === 0) resolve(pageResults);
+    }
+
+    pump();
+  });
 }
 
 async function runCheck() {
@@ -1939,6 +1994,16 @@ async function runCheck() {
   resultEl.innerHTML = '';
   setStatus('Finder sitemap …', false, true);
 
+  try {
+    await runCheckInner(originUrl, normalized);
+  } catch (e) {
+    setStatus('Uventet fejl under tjekket: ' + (e && e.message ? e.message : e), true);
+  } finally {
+    checkBtn.disabled = false;
+  }
+}
+
+async function runCheckInner(originUrl, normalized) {
   var pageUrls = await discoverSitemapUrls(originUrl, function(msg) {
     setStatus(msg, false, true);
   });
@@ -1962,7 +2027,6 @@ async function runCheck() {
 
   setStatus(capped ? 'Sitet har flere end ' + MAX_PAGES + ' sider – kun de første ' + MAX_PAGES + ' blev tjekket.' : '', capped);
   buildSiteReport(pageResults, originUrl);
-  checkBtn.disabled = false;
 }
 
 checkBtn.addEventListener('click', runCheck);
