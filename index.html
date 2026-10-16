@@ -823,10 +823,12 @@ function checkCtaLinkMismatch(anchors) {
     var lower = text.toLowerCase();
     var isTel = /^tel:/i.test(href);
 
+    // JS' \b kender ikke æ/ø/å, så "rengøring" ville ellers matche
+    // "ring". Derfor egen ordgrænse med de danske bogstaver med.
     var problem = null;
-    if (/^(kontakt|contact)\b/.test(lower) && isTel) {
+    if (/^(kontakt|contact)(?![a-zæøåäöü])/.test(lower) && isTel) {
       problem = '"' + text + '" linker til et telefonnummer i stedet for kontaktsiden';
-    } else if (/\b(ring|call)\b/.test(lower) && !isTel) {
+    } else if (/(^|[^a-zæøåäöü])(ring|call)(?![a-zæøåäöü])/.test(lower) && !isTel) {
       problem = '"' + text + '" linker ikke til et telefonnummer (tel:)';
     }
     if (!problem) return;
