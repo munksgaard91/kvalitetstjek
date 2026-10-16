@@ -1466,9 +1466,118 @@ function buildFejlAdvarslerToggle(container, pages) {
  * nogen fund (hverken fejl eller advarsler) vises slet ikke - de er der
  * ikke noget at se på dem. Til sidst en samlet Bestået/Dumpet-verdict.
  */
+/**
+ * Bygger hele rapporten som ren tekst til download, så feedback kan
+ * sendes som fil i stedet for skærmbilleder. Modsat skærm-rapporten
+ * grupperes der IKKE på tværs af sider: hver side står for sig med
+ * alle sine fund, inkl. kildekode for de fund der har det.
+ */
+function buildReportText(pageResults, originUrl) {
+  var lines = [];
+  function add(line) { lines.push(line === undefined ? '' : line); }
+  function pathOf(url) { return url.replace(/^https?:\/\/[^\/]+/, '') || '/'; }
+
+  function formatItem(item) {
+    if (typeof item === 'string') return [item];
+    var head = [];
+    if (item.value) head.push(item.value);
+    else if (item.text) head.push(item.text);
+    if (item.domain && item.text && item.text.indexOf(item.domain) === -1) head.push('(' + item.domain + ')');
+    if (item.href) head.push('-> ' + item.href);
+    if (item.context && !item.raw) head.push('| ' + item.context);
+    var out = [head.join(' ')];
+    if (item.raw) out.push('      Kode: ' + item.raw.replace(/\s+/g, ' ').trim());
+    return out;
+  }
+
+  function addGroups(groups) {
+    groups.forEach(function(g) {
+      if (!g.items || g.items.length === 0) return;
+      add('    ' + g.title + ':');
+      g.items.forEach(function(item) {
+        formatItem(item).forEach(function(l, i) { add((i === 0 ? '    - ' : '') + l); });
+      });
+    });
+  }
+
+  var checked = pageResults.filter(function(p) { return p.result; });
+  var withErrors = checked.filter(function(p) { return p.result.errors.length > 0; });
+  var withWarnings = checked.filter(function(p) { return p.result.warnings.length > 0; });
+  var clean = checked.filter(function(p) { return p.result.errors.length === 0 && p.result.warnings.length === 0; });
+  var media = pageResults.filter(function(p) { return p.mediaRedirect; });
+  var failed = pageResults.filter(function(p) { return !p.result && !p.mediaRedirect; });
+
+  var verdict = checked.length === 0 ? 'KUNNE IKKE TJEKKES' : (withErrors.length > 0 ? 'DUMPET' : 'BESTÅET');
+  var now = new Date();
+  var stamp = ('0' + now.getDate()).slice(-2) + '-' + ('0' + (now.getMonth() + 1)).slice(-2) + '-' + now.getFullYear() + ' ' + ('0' + now.getHours()).slice(-2) + ':' + ('0' + now.getMinutes()).slice(-2);
+
+  add('KVALITETSTJEK');
+  add('Site:        ' + originUrl);
+  add('Dato:        ' + stamp);
+  add('Kør igen:    ' + location.origin + location.pathname + '?url=' + encodeURIComponent(originUrl));
+  add('Resultat:    ' + verdict);
+  add('Sider:       ' + pageResults.length + ' tjekket, ' + withErrors.length + ' med fejl, ' + withWarnings.length + ' med advarsler, ' + clean.length + ' uden fund' + (failed.length ? ', ' + failed.length + ' kunne ikke hentes' : ''));
+  add();
+
+  if (withErrors.length > 0) {
+    add('==================== FEJL ====================');
+    withErrors.forEach(function(p) {
+      add();
+      add(pageLabel(pathOf(p.url)) + '  (' + p.url + ')');
+      p.result.errors.forEach(function(e) { add('  X ' + e); });
+      addGroups(errorHvorGroups(p.result));
+    });
+    add();
+  }
+
+  if (withWarnings.length > 0) {
+    add('================== ADVARSLER ==================');
+    withWarnings.forEach(function(p) {
+      add();
+      add(pageLabel(pathOf(p.url)) + '  (' + p.url + ')');
+      p.result.warnings.forEach(function(w) { add('  ! ' + w); });
+      addGroups(warningHvorGroups(p.result));
+    });
+    add();
+  }
+
+  if (media.length > 0) {
+    add('======= LINKS DER PEGER PÅ EN MEDIEFIL =======');
+    media.forEach(function(p) { add('  ' + pathOf(p.url) + '  ->  ' + p.mediaRedirect); });
+    add();
+  }
+
+  if (failed.length > 0) {
+    add('============== KUNNE IKKE HENTES ==============');
+    failed.forEach(function(p) { add('  ' + pathOf(p.url) + '  (' + (p.error || 'Ukendt fejl') + ')'); });
+    add();
+  }
+
+  if (clean.length > 0) {
+    add('============ SIDER UDEN FUND (' + clean.length + ') ============');
+    clean.forEach(function(p) { add('  ' + pageLabel(pathOf(p.url))); });
+    add();
+  }
+
+  return lines.join('\n');
+}
+
 function buildSiteReport(pageResults, originUrl) {
   var hostname = originUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
   resultEl.innerHTML = '';
+
+  var downloadBtn = el('button', { type: 'button', class: 'share-link-btn', text: '⬇ Download rapport' });
+  downloadBtn.addEventListener('click', function() {
+    var text = buildReportText(pageResults, originUrl);
+    var blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'kvalitetstjek-' + hostname.replace(/[^a-z0-9.-]/gi, '_') + '-' + new Date().toISOString().slice(0, 10) + '.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function() { URL.revokeObjectURL(a.href); }, 1000);
+  });
 
   var shareBtn = el('button', { type: 'button', class: 'share-link-btn', text: '🔗 Kopiér link' });
   shareBtn.addEventListener('click', function() {
@@ -1487,6 +1596,7 @@ function buildSiteReport(pageResults, originUrl) {
   var headerRow = el('div', { class: 'report-header' }, [
     el('span', { class: 'hostname', text: hostname }),
     el('div', { class: 'report-header-actions' }, [
+      downloadBtn,
       shareBtn,
       el('a', { href: originUrl, target: '_blank', rel: 'noopener', text: 'Åbn siden ↗' })
     ])
