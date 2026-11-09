@@ -1474,6 +1474,44 @@ function buildFejlAdvarslerToggle(container, pages) {
  * grupperes der IKKE på tværs af sider: hver side står for sig med
  * alle sine fund, inkl. kildekode for de fund der har det.
  */
+function shortLinkText(t) {
+  t = (t || '').trim();
+  if (!t) return '';
+  return t.length > 60 ? t.slice(0, 57) + '…' : t;
+}
+
+function mediaFileName(url) {
+  try { return decodeURIComponent(new URL(url).pathname.split('/').pop()); } catch (e) { return url; }
+}
+
+function mediaKindLabel(url) {
+  return /\.(jpe?g|png|gif|webp|svg|avif)(\?|$)/i.test(url) ? 'et billede' : 'en fil';
+}
+
+/**
+ * Kort beskrivelse af et link der ender på en mediefil:
+ * "Kørekort til bil" på Forside linker til et billede, ikke en side.
+ */
+function describeMediaRedirect(p) {
+  var pathOf = function(u) { return u.replace(/^https?:\/\/[^\/]+/, '') || '/'; };
+  var src = (p.sources && p.sources[0]) || null;
+  var linkText = src ? shortLinkText(src.text) : '';
+  var head = (linkText ? '"' + linkText + '"' : 'Et link') +
+    (src ? ' på ' + pageLabel(pathOf(src.page)) : '') +
+    ' linker til ' + mediaKindLabel(p.mediaRedirect) + ', ikke en side';
+  var others = (p.sources || []).slice(1).map(function(x) { return pageLabel(pathOf(x.page)); });
+  if (others.length) head += ' (også på ' + others.join(', ') + ')';
+  return { head: head + '.', sourceUrl: src ? src.page : null };
+}
+
+/**
+ * Links der via omdirigering ender på en PDF, lydfil o.l. er bevidste
+ * downloads (samme regel som for direkte links), så de vises ikke.
+ */
+function isReportableMediaRedirect(p) {
+  return p.mediaRedirect && !EXPECTED_DOWNLOAD_EXTENSIONS_RE.test(p.mediaRedirect);
+}
+
 function buildReportText(pageResults, originUrl) {
   var lines = [];
   function add(line) { lines.push(line === undefined ? '' : line); }
@@ -1506,7 +1544,7 @@ function buildReportText(pageResults, originUrl) {
   var withErrors = checked.filter(function(p) { return p.result.errors.length > 0; });
   var withWarnings = checked.filter(function(p) { return p.result.warnings.length > 0; });
   var clean = checked.filter(function(p) { return p.result.errors.length === 0 && p.result.warnings.length === 0; });
-  var media = pageResults.filter(function(p) { return p.mediaRedirect; });
+  var media = pageResults.filter(isReportableMediaRedirect);
   var failed = pageResults.filter(function(p) { return !p.result && !p.mediaRedirect; });
 
   var verdict = checked.length === 0 ? 'KUNNE IKKE TJEKKES' : (withErrors.length > 0 ? 'DUMPET' : 'BESTÅET');
@@ -1544,8 +1582,11 @@ function buildReportText(pageResults, originUrl) {
   }
 
   if (media.length > 0) {
-    add('======= LINKS DER PEGER PÅ EN MEDIEFIL =======');
-    media.forEach(function(p) { add('  ' + pathOf(p.url) + '  ->  ' + p.mediaRedirect); });
+    add('======= LINKS TIL BILLEDER/FILER =======');
+    media.forEach(function(p) {
+      add('  ! ' + describeMediaRedirect(p).head);
+      add('    ' + p.url + '  ->  ' + p.mediaRedirect);
+    });
     add();
   }
 
@@ -1612,7 +1653,7 @@ function buildSiteReport(pageResults, originUrl) {
   var okPages = pageResults.filter(function(p) { return p.result && p.result.errors.length === 0 && p.result.warnings.length === 0; });
   var errorCount = pageResults.filter(function(p) { return p.result && p.result.errors.length > 0; }).length;
   var warningCount = pageResults.filter(function(p) { return p.result && p.result.warnings.length > 0; }).length;
-  var mediaFilePages = pageResults.filter(function(p) { return p.mediaRedirect; });
+  var mediaFilePages = pageResults.filter(isReportableMediaRedirect);
   var fetchErrorPages = pageResults.filter(function(p) { return !p.result && !p.mediaRedirect; });
 
   var summaryText = pageResults.length + ' side(r) tjekket';
@@ -1626,20 +1667,14 @@ function buildSiteReport(pageResults, originUrl) {
   }
 
   if (mediaFilePages.length > 0) {
-    resultEl.appendChild(el('div', { class: 'crawl-warning' }, [
-      document.createTextNode('⚠️ ' + mediaFilePages.length + ' link/menupunkt på sitet peger reelt på en mediefil, ikke en side (formentlig en fejl - sker meget sjældent med vilje):')
-    ]));
     var mediaUl = el('ul', { class: 'item-list' });
     mediaFilePages.forEach(function(p) {
+      var d = describeMediaRedirect(p);
+      var inner = [el('span', { text: d.head + ' ' })];
+      if (d.sourceUrl) inner.push(el('a', { href: d.sourceUrl, target: '_blank', rel: 'noopener', class: 'page-block-link', text: 'Åbn siden ↗' }));
       mediaUl.appendChild(el('li', {}, [
-        el('span', { class: 'icon', text: '🖇️' }),
-        el('span', {}, [
-          el('span', { class: 'item-label' }, [
-            document.createTextNode(pathOf(p.url) + ' '),
-            el('a', { href: p.url, target: '_blank', rel: 'noopener', class: 'page-block-link', text: '↗' })
-          ]),
-          el('span', { class: 'item-context', text: 'Ender på: ' + p.mediaRedirect })
-        ])
+        el('span', { class: 'icon', text: '⚠️' }),
+        el('span', {}, inner)
       ]));
     });
     resultEl.appendChild(el('div', { class: 'toggle-content' }, [mediaUl]));
@@ -1992,7 +2027,7 @@ function extractInternalLinks(html, baseUrl, originHost) {
     if (ASSET_EXTENSION_RE.test(abs.pathname)) continue;
     if (isMediaLibraryPath(abs.pathname)) continue;
     if (isExcludedPath(abs.pathname)) continue;
-    found.push(abs.toString());
+    found.push({ url: abs.toString(), text: anchors[k].text });
   }
   return found;
 }
@@ -2016,6 +2051,10 @@ async function crawlViaLinks(originUrl, startUrl, onProgress) {
     try { return canonicalPageKey(new URL(url)); } catch (e) { return url; }
   }
 
+  // Hvilke sider der linker til hvad (og med hvilken linktekst), så
+  // fx et link der ender på en mediefil kan vises med "fundet på".
+  var linkSources = {};
+
   function handle(url, res) {
     if (pageResults.length >= MAX_PAGES) return;
     onProgress(pageResults.length + 1, url);
@@ -2035,7 +2074,7 @@ async function crawlViaLinks(originUrl, startUrl, onProgress) {
       var mediaKey = keyOf(finalUrl);
       if (!visited[mediaKey]) {
         visited[mediaKey] = true;
-        pageResults.push({ url: url, mediaRedirect: finalUrl });
+        pageResults.push({ url: url, mediaRedirect: finalUrl, sources: linkSources[keyOf(url)] || [] });
       }
       return;
     }
@@ -2051,10 +2090,14 @@ async function crawlViaLinks(originUrl, startUrl, onProgress) {
     if (pageResults.length >= MAX_PAGES) return;
 
     extractInternalLinks(res.html, finalUrl, originHost).forEach(function(link) {
-      var linkKey = keyOf(link);
+      var linkKey = keyOf(link.url);
+      var srcList = linkSources[linkKey] || (linkSources[linkKey] = []);
+      if (!srcList.some(function(x) { return x.page === finalUrl; })) {
+        srcList.push({ page: finalUrl, text: link.text });
+      }
       if (!visited[linkKey] && !queued[linkKey]) {
         queued[linkKey] = true;
-        frontier.push(link);
+        frontier.push(link.url);
       }
     });
   }
